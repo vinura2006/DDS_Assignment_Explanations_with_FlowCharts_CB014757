@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDS Assignment Diagram Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-effects">
+        <div class="glow glow-1"></div>
+        <div class="glow glow-2"></div>
+    </div>
+
+    <header class="glass-header">
+        <div class="header-content">
+            <h1>Algorithm Flowcharts</h1>
+            <p>DDS Assignment 2 • Interactive Diagram Viewer</p>
+        </div>
+        <nav class="tabs">
+            <button class="tab-btn active" data-target="part-a">Part A: Cloud Scheduler</button>
+            <button class="tab-btn" data-target="part-b1">Part B: Huffman Engine</button>
+            <button class="tab-btn" data-target="part-b2">Part B: Logistics Network</button>
+        </nav>
+    </header>
+
+    <main class="content-area">
+        <!-- Part A -->
+        <section id="part-a" class="tab-content active">
+            <div class="grid">
+                <div class="card" 
+                     data-img="diagrams/PartA_Q1_Submit_ComputeRequest.drawio.svg"
+                     data-title="Submit a Compute Request"
+                     data-desc="This flowchart illustrates the initialization and insertion process of a new ComputeRequest into the Priority Scheduler."
+                     data-points='["Creates ComputeRequest object","Assigns entryTimestamp and submissionSeqNum","Inserts into Max-Heap via siftUp in O(log n)"]'>
+                    <div class="card-inner">
+                        <h3>1. Submit Compute Request</h3>
+                        <p>Initialization and insertion into the Binary Max-Heap.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartA_Q1_Submit_ComputeRequest.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartA_Q1_AdvanceClock_and_Aging.drawio.svg"
+                     data-title="Advance Clock & Apply Aging"
+                     data-desc="This flowchart demonstrates the starvation-prevention mechanism, updating waiting times and boosting priorities."
+                     data-points='["Drains all requests to buffer","Computes agingBonus = (waitingTime−1)/X","Rebuilds heap with updated priorities in O(n log n)"]'>
+                    <div class="card-inner">
+                        <h3>2. Advance Clock & Aging</h3>
+                        <p>Drain-and-rebuild process to prevent priority starvation.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartA_Q1_AdvanceClock_and_Aging.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartA_Q1_Allocate_TopN_Requests.drawio.svg"
+                     data-title="Allocate Top-N Requests"
+                     data-desc="This flowchart details the greedy extraction process where the highest-priority requests are allocated."
+                     data-points='["Polls N highest-priority items from Max-Heap via successive extract-max in O(k log n)","Halts early if heap is empty"]'>
+                    <div class="card-inner">
+                        <h3>3. Allocate Top-N Requests</h3>
+                        <p>Greedy extraction of the highest-priority requests.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartA_Q1_Allocate_TopN_Requests.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartA_Q1_Display_ScheduledQueue.drawio.svg"
+                     data-title="Display Scheduled Queue"
+                     data-desc="This flowchart shows how the queue's state is safely displayed without corrupting the live heap structure."
+                     data-points='["Copies heap to array","Sorts via Insertion Sort in O(n²)","Prints all entries tagging any that have aged up","Does NOT modify the live heap"]'>
+                    <div class="card-inner">
+                        <h3>4. Display Scheduled Queue</h3>
+                        <p>Heap copy and insertion sort for safe display.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartA_Q1_Display_ScheduledQueue.drawio.svg')"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Part B Scenario 1 -->
+        <section id="part-b1" class="tab-content">
+            <div class="grid">
+                <div class="card" 
+                     data-img="diagrams/PartB_S1_Huffman_TreeBuild.drawio.svg"
+                     data-title="Huffman Tree Build"
+                     data-desc="This flowchart maps the greedy algorithm for constructing the Huffman tree using a custom Binary Min-Heap."
+                     data-points='["Counts ASCII frequencies","Inserts leaf nodes","Merges two lowest-frequency nodes repeatedly using Min-Heap","Single-char input uses synthetic root"]'>
+                    <div class="card-inner">
+                        <h3>1. Huffman Tree Build</h3>
+                        <p>Custom Min-Heap merge with 3-tier tie-breaking.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S1_Huffman_TreeBuild.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartB_S1_Huffman_Encode.drawio.svg"
+                     data-title="Huffman Encode"
+                     data-desc="This flowchart illustrates the encoding phase where prefix codes are concatenated for an input string."
+                     data-points='["Looks up each character&#39;s prefix code in the code table","Concatenates bits","Returns null if any character is not in the tree"]'>
+                    <div class="card-inner">
+                        <h3>2. Encode String</h3>
+                        <p>Prefix code concatenation from the active tree.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S1_Huffman_Encode.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartB_S1_Huffman_Decode.drawio.svg"
+                     data-title="Huffman Decode"
+                     data-desc="This flowchart details the bit-by-bit tree traversal required to translate a binary string back into characters."
+                     data-points='["Traverses tree bit-by-bit (0=left, 1=right)","Appends character on leaf","Resets to root","Returns null for invalid sequences"]'>
+                    <div class="card-inner">
+                        <h3>3. Decode Bits</h3>
+                        <p>Bit-by-bit tree traversal to recover original characters.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S1_Huffman_Decode.drawio.svg')"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Part B Scenario 2 -->
+        <section id="part-b2" class="tab-content">
+            <div class="grid">
+                <div class="card" 
+                     data-img="diagrams/PartB_S2_Dijkstra_ShortestPath.drawio.svg"
+                     data-title="Dijkstra's Shortest Path"
+                     data-desc="This flowchart outlines the core pathfinding logic using a lazy-deletion Min-Heap."
+                     data-points='["Lazy-deletion Min-Heap","Skips permanently blocked lanes","Exits early when destination is settled","Reconstructs path via prev array"]'>
+                    <div class="card-inner">
+                        <h3>1. Dijkstra's Shortest Path</h3>
+                        <p>Lazy-deletion Min-Heap pathfinding avoiding blocked lanes.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S2_Dijkstra_ShortestPath.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartB_S2_Adaptive_WeightUpdate.drawio.svg"
+                     data-title="Adaptive Weight Update"
+                     data-desc="This flowchart demonstrates the dynamic network rules applied after every delivery leg."
+                     data-points='["Used lanes: weight × 1.10","Unused lanes: weight × 0.95 floored at baseWeight","Lanes exceeding 5× baseWeight are permanently blocked"]'>
+                    <div class="card-inner">
+                        <h3>2. Adaptive Weight Update</h3>
+                        <p>Dynamic 10% penalty, 5% recovery, and hard constraints.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S2_Adaptive_WeightUpdate.drawio.svg')"></div>
+                    </div>
+                </div>
+                <div class="card" 
+                     data-img="diagrams/PartB_S2_MultiHub_Journey.drawio.png"
+                     data-title="Multi-Hub Journey"
+                     data-desc="This flowchart shows the overarching logic for stitching together a sequential multi-hub delivery."
+                     data-points='["Iterates over each leg (src→hub1→hub2→...→dest)","Runs Dijkstra + weight update per leg","Aborts and reports if any leg is unreachable"]'>
+                    <div class="card-inner">
+                        <h3>3. Multi-Hub Journey</h3>
+                        <p>Iterative leg execution and graph state updates.</p>
+                        <div class="img-preview" style="background-image: url('diagrams/PartB_S2_MultiHub_Journey.drawio.png')"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal Viewer -->
+    <div id="viewer-modal" class="modal">
+        <button id="close-modal" class="close-btn">&times;</button>
+        <div class="modal-layout">
+            <div class="modal-main">
+                <div class="controls glass-panel">
+                    <button id="zoom-in" title="Zoom In">+</button>
+                    <button id="zoom-out" title="Zoom Out">−</button>
+                    <button id="reset-zoom" title="Reset View">⟲</button>
+                </div>
+                <div id="pan-container" class="pan-container">
+                    <img id="modal-img" src="" alt="Diagram">
+                </div>
+            </div>
+            <div class="modal-sidebar glass-panel" id="modal-sidebar">
+                <h2 id="sidebar-title">Diagram Title</h2>
+                <p id="sidebar-desc">Diagram description goes here.</p>
+                <div class="sidebar-keypoints">
+                    <h3>Key Operations</h3>
+                    <ul id="sidebar-points">
+                        <!-- Populated dynamically -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
