@@ -24,6 +24,7 @@
             <button class="tab-btn active" data-target="part-a">Part A: Cloud Scheduler</button>
             <button class="tab-btn" data-target="part-b1">Part B: Huffman Engine</button>
             <button class="tab-btn" data-target="part-b2">Part B: Logistics Network</button>
+            <button class="tab-btn" data-target="source-code">📄 Source Code</button>
         </nav>
     </header>
 
@@ -151,6 +152,2371 @@
                         <h3>3. Multi-Hub Journey</h3>
                         <p>Iterative leg execution and graph state updates.</p>
                         <div class="img-preview" style="background-image: url('diagrams/PartB_S2_MultiHub_Journey.drawio.png')"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Source Code Section -->
+        <section id="source-code" class="tab-content">
+            <div class="code-sub-tabs glass-panel">
+                <button class="code-sub-tab-btn active" data-code-target="code-part-a">☁ Part A: Cloud Scheduler</button>
+                <button class="code-sub-tab-btn" data-code-target="code-part-b1">🌲 Part B: Huffman Engine</button>
+                <button class="code-sub-tab-btn" data-code-target="code-part-b2">🚢 Part B: Logistics Network</button>
+            </div>
+
+            <!-- Part A Files -->
+            <div id="code-part-a" class="code-sub-content active">
+                <div class="file-picker glass-panel">
+                    <button class="file-btn active" data-file-target="file-compute-request">ComputeRequest.java</button>
+                    <button class="file-btn" data-file-target="file-max-heap">MaxHeap.java</button>
+                    <button class="file-btn" data-file-target="file-priority-engine">PrioritySchedulerEngine.java</button>
+                    <button class="file-btn" data-file-target="file-cloud-app">CloudSchedulerApp.java</button>
+                </div>
+                <div class="code-viewer-container glass-panel">
+                    <div id="file-compute-request" class="file-content active">
+                        <div class="code-header">
+                            <span class="file-path">part-A/ComputeRequest.java</span>
+                            <button class="copy-btn" data-target="code-file-compute-request">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-compute-request">package cloudscheduler;
+
+/**
+ * This class represents a single compute request submitted by a cloud client.
+ * Each request stores who submitted it, what resource they need, and what
+ * priority level they should get in the scheduler queue.
+ * 
+ * I split the priority into two values: basePriority (what the user set at
+ * submission time) and currentPriority (which can increase over time due to aging).
+ * This way the original priority is never lost.
+ * 
+ * The static compare() method at the bottom is used by both MaxHeap and the
+ * display sort so they both use the exact same ordering rules.
+ * 
+ * Ordering from highest to lowest:
+ *   1. Higher currentPriority wins
+ *   2. Earlier arrival time wins if priority is equal
+ *   3. Lower submission number wins if arrival time is also equal (strict FIFO)
+ */
+public class ComputeRequest {
+
+    // -- Fields that are set once at submission and never change --
+
+    /** Who submitted this request. */
+    final String clientId;
+
+    /** Either &quot;CPU&quot; or &quot;GPU&quot;. */
+    final String resourceType;
+
+    /** The priority the user gave when submitting. This never changes. */
+    final int basePriority;
+
+    /** The simulated clock time when this request was added to the queue. */
+    final long entryTimestamp;
+
+    /**
+     * A unique counter value that goes up by 1 with each submission.
+     * Used as a last tiebreaker so the queue is strictly fair (FIFO).
+     */
+    final long submissionSequenceNumber;
+
+    // -- Fields that can change as the scheduler runs --
+
+    /**
+     * The working priority used for scheduling. Starts equal to basePriority
+     * but can grow through aging. It never goes above 10 and never decreases.
+     */
+    int currentPriority;
+
+    /** Becomes true the first time this request gets an aging boost. Used for display. */
+    boolean hasBeenAged;
+
+    // -- Constructor --
+
+    ComputeRequest(String clientId,
+                   String resourceType,
+                   int basePriority,
+                   long entryTimestamp,
+                   long submissionSequenceNumber) {
+
+        this.clientId                = clientId;
+        this.resourceType            = resourceType;
+        this.basePriority            = basePriority;
+        this.currentPriority         = basePriority;
+        this.entryTimestamp          = entryTimestamp;
+        this.submissionSequenceNumber = submissionSequenceNumber;
+        this.hasBeenAged             = false;
+    }
+
+    /** Simple check to see if this request has ever received an aging boost. */
+    boolean isAged() {
+        return hasBeenAged;
+    }
+
+    /**
+     * Compares two requests to decide which one should be served first.
+     * Returns a positive number if &#x27;a&#x27; should come before &#x27;b&#x27;.
+     * 
+     * Rule 1: higher currentPriority wins.
+     * Rule 2: if equal priority, whoever arrived first wins.
+     * Rule 3: if arrival time is also equal, the one submitted first wins.
+     */
+    static int compare(ComputeRequest a, ComputeRequest b) {
+
+        // Rule 1: higher priority goes first
+        if (a.currentPriority != b.currentPriority) {
+            return a.currentPriority - b.currentPriority;
+        }
+
+        // Rule 2: earlier arrival time goes first (positive means a arrived earlier)
+        if (a.entryTimestamp != b.entryTimestamp) {
+            return (a.entryTimestamp &lt; b.entryTimestamp) ? 1 : -1;
+        }
+
+        // Rule 3: lower sequence number goes first (the one submitted first)
+        if (a.submissionSequenceNumber != b.submissionSequenceNumber) {
+            return (a.submissionSequenceNumber &lt; b.submissionSequenceNumber) ? 1 : -1;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Builds a single readable line summarising this request.
+     * Used by both the allocation output and the queue display.
+     */
+    String buildSummaryLine(long currentSimulatedTime) {
+        long waitingSeconds = currentSimulatedTime - entryTimestamp;
+        String agedMarker   = hasBeenAged ? &quot; *** AGED ***&quot; : &quot;&quot;;
+        return String.format(
+            &quot;Client: %-10s | Type: %-3s | Base: %2d | Priority: %2d | Wait: %3ds%s&quot;,
+            clientId, resourceType, basePriority, currentPriority,
+            waitingSeconds, agedMarker
+        );
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-max-heap" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">part-A/MaxHeap.java</span>
+                            <button class="copy-btn" data-target="code-file-max-heap">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-max-heap">package cloudscheduler;
+
+/**
+ * This is a custom Binary Max-Heap that I built from scratch to store
+ * ComputeRequest objects. I built it myself instead of using Java&#x27;s
+ * PriorityQueue because the assignment requires no built-in data structures.
+ * 
+ * The heap stores everything in a plain array. The highest-priority request
+ * always sits at index 0 (the root), so extracting it is fast.
+ * 
+ * How the array positions work:
+ *   - Parent of index i  is at  (i - 1) / 2
+ *   - Left child of i   is at  2*i + 1
+ *   - Right child of i  is at  2*i + 2
+ * 
+ * The heap rule: every parent must have higher (or equal) priority than
+ * both of its children, using ComputeRequest.compare() to decide.
+ * 
+ * Time costs:
+ *   - offer() (insert)  : O(log n)
+ *   - poll()  (remove)  : O(log n)
+ *   - peek()  (look)    : O(1)
+ */
+public class MaxHeap {
+
+    private ComputeRequest[] data;
+    private int size;
+    private static final int INITIAL_CAPACITY = 16;
+
+    MaxHeap() {
+        data = new ComputeRequest[INITIAL_CAPACITY];
+        size = 0;
+    }
+
+    /** How many requests are currently in the heap. */
+    int size() {
+        return size;
+    }
+
+    /** Returns true if the heap has no requests in it. */
+    boolean isEmpty() {
+        return size == 0;
+    }
+
+    /**
+     * Adds a new request to the heap.
+     * The request goes to the end of the array and then bubbles up
+     * (siftUp) until it finds its correct position.
+     * Time: O(log n)
+     */
+    void offer(ComputeRequest request) {
+        if (size == data.length) {
+            resize();
+        }
+        data[size] = request;
+        siftUp(size);
+        size++;
+    }
+
+    /**
+     * Removes and returns the highest-priority request (the one at the root).
+     * The last element in the array moves to the root, then sinks down
+     * (siftDown) to find its correct position.
+     * Returns null if the heap is empty.
+     * Time: O(log n)
+     */
+    ComputeRequest poll() {
+        if (size == 0) {
+            return null;
+        }
+        ComputeRequest top = data[0];
+
+        // Move the last element to the root to fill the gap.
+        size--;
+        data[0] = data[size];
+        data[size] = null; // let GC reclaim memory
+
+        if (size &gt; 0) {
+            siftDown(0);
+        }
+        return top;
+    }
+
+    /**
+     * Returns the highest-priority request without removing it from the heap.
+     * Returns null if the heap is empty.
+     * Time: O(1)
+     */
+    ComputeRequest peek() {
+        return (size == 0) ? null : data[0];
+    }
+
+    /**
+     * Returns a copy of all the elements currently in the heap as a plain array.
+     * The order matches the internal heap array, not scheduling order.
+     * The heap itself is not modified.
+     * Time: O(n)
+     */
+    ComputeRequest[] toArray() {
+        ComputeRequest[] copy = new ComputeRequest[size];
+        for (int i = 0; i &lt; size; i++) {
+            copy[i] = data[i];
+        }
+        return copy;
+    }
+
+    /**
+     * Empties the heap completely.
+     * Time: O(n)
+     */
+    void clear() {
+        for (int i = 0; i &lt; size; i++) {
+            data[i] = null; // let GC reclaim memory
+        }
+        size = 0;
+    }
+
+    // -- Private heap mechanics --
+
+    /**
+     * Bubbles the element at &#x27;index&#x27; upward until the heap rule is satisfied.
+     * Used after adding a new element at the end.
+     */
+    private void siftUp(int index) {
+        while (index &gt; 0) {
+            int parent = (index - 1) / 2;
+            // If this element has higher priority than its parent, swap them.
+            if (ComputeRequest.compare(data[index], data[parent]) &gt; 0) {
+                swap(index, parent);
+                index = parent;
+            } else {
+                break; // heap rule is restored, stop
+            }
+        }
+    }
+
+    /**
+     * Sinks the element at &#x27;index&#x27; downward until the heap rule is satisfied.
+     * Used after removing the root and placing the last element there.
+     */
+    private void siftDown(int index) {
+        while (true) {
+            int left    = 2 * index + 1;
+            int right   = 2 * index + 2;
+            int largest = index; // track which of parent/left/right has highest priority
+
+            // Check if the left child has higher priority than the current largest.
+            if (left &lt; size &amp;&amp; ComputeRequest.compare(data[left], data[largest]) &gt; 0) {
+                largest = left;
+            }
+
+            // Check if the right child beats even that.
+            if (right &lt; size &amp;&amp; ComputeRequest.compare(data[right], data[largest]) &gt; 0) {
+                largest = right;
+            }
+
+            if (largest == index) {
+                break; // the element is already in the right place
+            }
+
+            swap(index, largest);
+            index = largest;
+        }
+    }
+
+    /** Swaps two elements in the backing array. */
+    private void swap(int i, int j) {
+        ComputeRequest temp = data[i];
+        data[i] = data[j];
+        data[j] = temp;
+    }
+
+    /**
+     * When the backing array is full, this doubles its size and copies
+     * all existing elements over. This keeps insertion amortised O(log n).
+     */
+    private void resize() {
+        ComputeRequest[] larger = new ComputeRequest[data.length * 2];
+        for (int i = 0; i &lt; data.length; i++) {
+            larger[i] = data[i];
+        }
+        data = larger;
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-priority-engine" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">part-A/PrioritySchedulerEngine.java</span>
+                            <button class="copy-btn" data-target="code-file-priority-engine">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-priority-engine">package cloudscheduler;
+
+/**
+ * This class is the brain of the scheduler. It owns the MaxHeap and
+ * implements the four main operations (A, B, C, D) that the assignment requires.
+ * 
+ * I separated the logic here from CloudSchedulerApp (the menu/UI) so that
+ * the actual scheduling algorithm is independent and easy to test on its own.
+ * 
+ * Data structure used: Custom Binary Max-Heap (see MaxHeap.java)
+ *   - O(log n) to insert a new request
+ *   - O(log n) to extract the highest-priority request
+ * 
+ * The aging formula I used to prevent starvation:
+ *   agingBonus  = (waitingTime - 1) / agingIntervalSeconds   (integer division)
+ *   newPriority = min(10, basePriority + agingBonus)
+ * 
+ * The &quot;(waitingTime - 1)&quot; makes the condition &quot;strictly more than X seconds&quot;:
+ *   If X=10 and wait=10 → (10-1)/10 = 0 → no boost yet  ✓
+ *   If X=10 and wait=11 → (11-1)/10 = 1 → one boost      ✓
+ *   If X=10 and wait=21 → (21-1)/10 = 2 → two boosts     ✓
+ * 
+ * Time complexities:
+ *   submitComputeRequest            : O(log n)
+ *   advanceClockAndApplyAgingBoosts : O(n log n)
+ *   allocateTopNHighPriorityRequests: O(k log n)  where k = requests taken
+ *   displayScheduledQueue           : O(n log n)  due to insertion sort snapshot
+ */
+public class PrioritySchedulerEngine {
+
+    static final int MAX_PRIORITY = 10;
+    static final int MIN_PRIORITY = 1;
+
+    /** The heap that holds all pending requests. */
+    private final MaxHeap schedulingHeap;
+
+    /** The simulated clock in seconds. Starts at 0. */
+    private long simulatedClockSeconds;
+
+    /** Increments by 1 with every submission to guarantee strict FIFO ordering. */
+    private long submissionSequenceCounter;
+
+    /** How many seconds a request must wait before getting a priority boost. */
+    private final int agingIntervalSeconds;
+
+    PrioritySchedulerEngine(int agingIntervalSeconds) {
+        this.schedulingHeap           = new MaxHeap();
+        this.agingIntervalSeconds     = agingIntervalSeconds;
+        this.simulatedClockSeconds    = 0L;
+        this.submissionSequenceCounter = 0L;
+    }
+
+    // -- Accessor methods used by the UI to show status in the menu --
+    long getSimulatedClockSeconds() { return simulatedClockSeconds; }
+    int  getPendingRequestCount()   { return schedulingHeap.size(); }
+    int  getAgingIntervalSeconds()  { return agingIntervalSeconds; }
+
+    // -- Operation A: Submit a new compute request --
+
+    /**
+     * Creates a ComputeRequest object with the current clock time and a
+     * unique sequence number, then inserts it into the max-heap.
+     * Time: O(log n) because of the siftUp inside offer().
+     */
+    void submitComputeRequest(String clientId,
+                              String resourceType,
+                              int basePriority) {
+
+        ComputeRequest newRequest = new ComputeRequest(
+            clientId,
+            resourceType,
+            basePriority,
+            simulatedClockSeconds,
+            submissionSequenceCounter++
+        );
+
+        schedulingHeap.offer(newRequest);
+
+        printSectionDivider();
+        System.out.println(&quot;  [SUBMITTED SUCCESSFULLY]&quot;);
+        System.out.println(&quot;  &quot; + newRequest.buildSummaryLine(simulatedClockSeconds));
+        printSectionDivider();
+    }
+
+    // -- Operation B: Advance the clock and apply aging boosts --
+
+    /**
+     * Moves the simulated clock forward and recalculates the priority for
+     * every waiting request using the aging formula.
+     * 
+     * Why I drain and rebuild the heap:
+     * The heap does not automatically reposition elements when their priority
+     * changes. So I pull everything out into a temporary array, update each
+     * request&#x27;s priority, then put them all back in with offer() so the
+     * heap reorganises itself correctly.
+     * 
+     * Time: O(n log n) because each of the n requests goes through offer() which is O(log n).
+     */
+    void advanceClockAndApplyAgingBoosts(int secondsToAdvance) {
+
+        simulatedClockSeconds += secondsToAdvance;
+
+        if (schedulingHeap.isEmpty()) {
+            printSectionDivider();
+            System.out.printf(
+                &quot;  [CLOCK] Advanced to %ds — queue is empty; no aging applied.%n&quot;,
+                simulatedClockSeconds);
+            printSectionDivider();
+            return;
+        }
+
+        // Step 1: pull all requests out into a flat array.
+        ComputeRequest[] buffer = schedulingHeap.toArray();
+        schedulingHeap.clear();
+
+        int boostCount = 0;
+
+        // Step 2: recalculate each request&#x27;s priority, then re-add to the heap.
+        for (int i = 0; i &lt; buffer.length; i++) {
+            ComputeRequest request = buffer[i];
+            long waitingTime = simulatedClockSeconds - request.entryTimestamp;
+
+            // Aging formula: the -1 enforces &quot;strictly more than X seconds&quot;
+            int agingBonus  = (int) ((waitingTime - 1) / agingIntervalSeconds);
+            int newPriority = Math.min(MAX_PRIORITY, request.basePriority + agingBonus);
+
+            if (newPriority &gt; request.currentPriority) {
+                request.hasBeenAged = true;
+                boostCount++;
+            }
+            request.currentPriority = newPriority;
+
+            schedulingHeap.offer(request); // O(log n) sift-up
+        }
+
+        printSectionDivider();
+        System.out.printf(
+            &quot;  [CLOCK]  Simulated time is now %ds  |  Aging interval: every %ds%n&quot;,
+            simulatedClockSeconds, agingIntervalSeconds);
+        System.out.printf(
+            &quot;  [AGING]  %d of %d request(s) received a priority boost.%n&quot;,
+            boostCount, buffer.length);
+        printSectionDivider();
+    }
+
+    // -- Operation C: Remove and serve the top N requests --
+
+    /**
+     * Repeatedly extracts the highest-priority request from the heap
+     * and prints it. Stops early if the heap runs empty before reaching N.
+     * Time: O(k log n) where k is how many requests we actually extract.
+     */
+    void allocateTopNHighPriorityRequests(int numberOfRequestsToAllocate) {
+
+        if (schedulingHeap.isEmpty()) {
+            printSectionDivider();
+            System.out.println(&quot;  [ALLOCATE] Queue is empty — no requests to allocate.&quot;);
+            printSectionDivider();
+            return;
+        }
+
+        int actualCount = Math.min(numberOfRequestsToAllocate, schedulingHeap.size());
+        printSectionDivider();
+        System.out.printf(&quot;  [ALLOCATING TOP %d REQUEST(S)]%n%n&quot;, actualCount);
+
+        for (int rank = 1; rank &lt;= actualCount; rank++) {
+            ComputeRequest served = schedulingHeap.poll(); // O(log n) sift-down
+            System.out.printf(&quot;  [%d] %s%n&quot;, rank,
+                              served.buildSummaryLine(simulatedClockSeconds));
+        }
+
+        System.out.printf(&quot;%n  Allocation complete. %d request(s) still pending.%n&quot;,
+                          schedulingHeap.size());
+        printSectionDivider();
+    }
+
+    // -- Operation D: Display the full queue without removing anything --
+
+    /**
+     * Shows every request in scheduling order without touching the live heap.
+     * 
+     * How it works:
+     *   1. Copy the heap contents into a plain array (doesn&#x27;t touch the heap).
+     *   2. Sort that array using insertion sort so they appear in priority order.
+     *   3. Print the sorted list. The real heap is untouched throughout.
+     * 
+     * I chose insertion sort because it needs no extra data structures and
+     * the queue sizes in this simulation are small enough that O(n²) is fine.
+     */
+    void displayScheduledQueue() {
+
+        printSectionDivider();
+        System.out.printf(
+            &quot;  [QUEUE STATUS]  Clock=%ds | Aging every %ds | %d request(s) pending%n&quot;,
+            simulatedClockSeconds, agingIntervalSeconds, schedulingHeap.size());
+
+        if (schedulingHeap.isEmpty()) {
+            System.out.println(&quot;  Queue is currently empty.&quot;);
+            printSectionDivider();
+            return;
+        }
+
+        // Take a snapshot — this does NOT change the heap.
+        ComputeRequest[] snapshot = schedulingHeap.toArray();
+
+        // Sort the snapshot so index 0 = the request that would be served first.
+        insertionSortBySchedulingOrder(snapshot);
+
+        System.out.println();
+        System.out.printf(&quot;  %-4s %-12s %-5s %6s %9s %9s %-14s%n&quot;,
+            &quot;#&quot;, &quot;Client ID&quot;, &quot;Type&quot;, &quot;Base&quot;, &quot;Priority&quot;, &quot;Waiting&quot;, &quot;Status&quot;);
+        System.out.println(&quot;  &quot; + repeat(&#x27;-&#x27;, 68));
+
+        int agedCount = 0;
+        for (int i = 0; i &lt; snapshot.length; i++) {
+            ComputeRequest r    = snapshot[i];
+            long waitSeconds    = simulatedClockSeconds - r.entryTimestamp;
+            String statusLabel  = r.isAged() ? &quot;*** AGED ***&quot; : &quot;normal&quot;;
+            String nextPointer  = (i == 0) ? &quot; &lt;- NEXT&quot; : &quot;&quot;;
+
+            System.out.printf(&quot;  %-4d %-12s %-5s %6d %9d %8ds %-14s%s%n&quot;,
+                i + 1, r.clientId, r.resourceType, r.basePriority,
+                r.currentPriority, waitSeconds, statusLabel, nextPointer);
+
+            if (r.isAged()) agedCount++;
+        }
+
+        System.out.println();
+        System.out.printf(&quot;  Summary: %d aged | %d normal | %d total%n&quot;,
+            agedCount, snapshot.length - agedCount, snapshot.length);
+        printSectionDivider();
+    }
+
+    // -- Private sort helper --
+
+    /**
+     * Sorts the array so that the highest-priority request is at index 0.
+     * Works just like sorting numbers in descending order, but uses
+     * ComputeRequest.compare() to decide the order.
+     */
+    private static void insertionSortBySchedulingOrder(ComputeRequest[] arr) {
+        for (int i = 1; i &lt; arr.length; i++) {
+            ComputeRequest key = arr[i];
+            int j = i - 1;
+            // Shift elements with lower priority one position to the right.
+            while (j &gt;= 0 &amp;&amp; ComputeRequest.compare(arr[j], key) &lt; 0) {
+                arr[j + 1] = arr[j];
+                j--;
+            }
+            arr[j + 1] = key;
+        }
+    }
+
+    // -- Private string utility (Java 8 does not have String.repeat) --
+
+    private static String repeat(char ch, int times) {
+        char[] chars = new char[times];
+        for (int i = 0; i &lt; times; i++) chars[i] = ch;
+        return new String(chars);
+    }
+
+    /** Shared divider line used by all four operations for consistent output formatting. */
+    static void printSectionDivider() {
+        System.out.println(&quot;  &quot; + &quot;─────────────────────────────────────────────────────────────────────&quot;);
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-cloud-app" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">part-A/CloudSchedulerApp.java</span>
+                            <button class="copy-btn" data-target="code-file-cloud-app">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-cloud-app">package cloudscheduler;
+
+import java.util.Scanner;
+
+/**
+ * This is the main entry point of the Cloud Scheduler application.
+ * It handles all the user interaction - showing the menu, reading input,
+ * and calling the appropriate scheduling methods.
+ * 
+ * I kept all the actual scheduling logic inside PrioritySchedulerEngine
+ * so this class stays clean and only deals with the console UI.
+ * 
+ * The only import I used in the whole project is java.util.Scanner right here,
+ * everything else like String and Math are built into Java automatically.
+ */
+public class CloudSchedulerApp {
+
+    public static void main(String[] args) {
+
+        Scanner userInputScanner = new Scanner(System.in);
+
+        printWelcomeBanner();
+
+        // Ask the user to set the aging interval before starting.
+        // If they press Enter without typing anything, it defaults to 10 seconds.
+        System.out.print(&quot;  Set aging interval X in seconds (default = 10): &quot;);
+        String rawAgingInput = userInputScanner.nextLine().trim();
+
+        int chosenAgingInterval = 10;
+        try {
+            int parsed = Integer.parseInt(rawAgingInput);
+            if (parsed &gt; 0) chosenAgingInterval = parsed;
+        } catch (NumberFormatException ignored) {}
+
+        System.out.printf(&quot;%n  Scheduler started. Aging interval X = %ds.%n&quot;,
+                          chosenAgingInterval);
+        System.out.println(&quot;  Priority boosts after STRICTLY MORE THAN X seconds waiting.&quot;);
+        System.out.println(&quot;  Priority is capped at &quot; + PrioritySchedulerEngine.MAX_PRIORITY
+                           + &quot; and never decreases.&quot;);
+
+        PrioritySchedulerEngine schedulerEngine =
+            new PrioritySchedulerEngine(chosenAgingInterval);
+
+        // Keep showing the menu until the user chooses to exit.
+        while (true) {
+
+            printMenuOptions(schedulerEngine);
+            String userChoice = userInputScanner.nextLine().trim().toUpperCase();
+
+            switch (userChoice) {
+
+                case &quot;A&quot;: {
+                    System.out.println();
+                    System.out.println(&quot;  --- SUBMIT NEW REQUEST -------------------------------------------&quot;);
+                    String clientId     = readNonEmptyString(userInputScanner, &quot;Client ID: &quot;);
+                    String resourceType = readResourceType(userInputScanner);
+                    int basePriority    = readIntegerInRange(
+                                            userInputScanner,
+                                            &quot;Base Priority (1-10): &quot;,
+                                            PrioritySchedulerEngine.MIN_PRIORITY,
+                                            PrioritySchedulerEngine.MAX_PRIORITY);
+                    schedulerEngine.submitComputeRequest(clientId, resourceType, basePriority);
+                    break;
+                }
+
+                case &quot;B&quot;: {
+                    System.out.println();
+                    System.out.println(&quot;  --- SIMULATE TIME ------------------------------------------------&quot;);
+                    int secondsToAdvance = readIntegerInRange(
+                                            userInputScanner,
+                                            &quot;Seconds to advance (&gt; 0): &quot;,
+                                            1, Integer.MAX_VALUE);
+                    schedulerEngine.advanceClockAndApplyAgingBoosts(secondsToAdvance);
+                    break;
+                }
+
+                case &quot;C&quot;: {
+                    System.out.println();
+                    System.out.println(&quot;  --- ALLOCATE TOP N REQUESTS --------------------------------------&quot;);
+                    int n = readIntegerInRange(
+                                userInputScanner,
+                                &quot;Number of requests to allocate (N &gt;= 1): &quot;,
+                                1, Integer.MAX_VALUE);
+                    schedulerEngine.allocateTopNHighPriorityRequests(n);
+                    break;
+                }
+
+                case &quot;D&quot;: {
+                    schedulerEngine.displayScheduledQueue();
+                    break;
+                }
+
+                case &quot;E&quot;:
+                case &quot;EXIT&quot;: {
+                    PrioritySchedulerEngine.printSectionDivider();
+                    System.out.println(&quot;  Scheduler stopped. All pending requests discarded.&quot;);
+                    PrioritySchedulerEngine.printSectionDivider();
+                    userInputScanner.close();
+                    return;
+                }
+
+                default:
+                    System.out.println(
+                        &quot;  [ERROR] Invalid option. Please choose A, B, C, D, or E.&quot;);
+            }
+        }
+    }
+
+    // -- UI helper methods below -- these only deal with printing and reading input --
+
+    private static void printWelcomeBanner() {
+        System.out.println();
+        System.out.println(&quot;  +----------------------------------------------+&quot;);
+        System.out.println(&quot;  |     CLOUD COMPUTE INSTANCE SCHEDULER         |&quot;);
+        System.out.println(&quot;  |   Priority Scheduling + Starvation Aging     |&quot;);
+        System.out.println(&quot;  |   Data Structures: Custom Binary Max-Heap    |&quot;);
+        System.out.println(&quot;  |   Import used: java.util.Scanner ONLY        |&quot;);
+        System.out.println(&quot;  +----------------------------------------------+&quot;);
+        System.out.println();
+    }
+
+    private static void printMenuOptions(PrioritySchedulerEngine engine) {
+        System.out.println();
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        System.out.printf (&quot;  |  Simulated Clock  : %-22ds |%n&quot;,
+                            engine.getSimulatedClockSeconds());
+        System.out.printf (&quot;  |  Aging Interval   : every %-16ds |%n&quot;,
+                            engine.getAgingIntervalSeconds());
+        System.out.printf (&quot;  |  Queue Size       : %-22d |%n&quot;,
+                            engine.getPendingRequestCount());
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        System.out.println(&quot;  |  A -- Submit New Request                    |&quot;);
+        System.out.println(&quot;  |  B -- Simulate Time (Apply Aging)           |&quot;);
+        System.out.println(&quot;  |  C -- Allocate Top N Requests               |&quot;);
+        System.out.println(&quot;  |  D -- Display Current Queue                 |&quot;);
+        System.out.println(&quot;  |  E -- Exit                                  |&quot;);
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        System.out.print(&quot;  Choice: &quot;);
+    }
+
+    /** Keeps asking until the user types something that is not blank. */
+    private static String readNonEmptyString(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(&quot;  &quot; + prompt);
+            String value = scanner.nextLine().trim();
+            if (!value.isEmpty()) return value;
+            System.out.println(&quot;  [ERROR] Input cannot be empty. Please try again.&quot;);
+        }
+    }
+
+    /** Keeps asking until the user types CPU or GPU (case doesn&#x27;t matter). */
+    private static String readResourceType(Scanner scanner) {
+        while (true) {
+            System.out.print(&quot;  Resource Type (CPU / GPU): &quot;);
+            String value = scanner.nextLine().trim().toUpperCase();
+            if (value.equals(&quot;CPU&quot;) || value.equals(&quot;GPU&quot;)) return value;
+            System.out.println(&quot;  [ERROR] Resource type must be CPU or GPU.&quot;);
+        }
+    }
+
+    /** Keeps asking until the user enters a whole number between min and max. */
+    private static int readIntegerInRange(Scanner scanner, String prompt, int min, int max) {
+        while (true) {
+            System.out.print(&quot;  &quot; + prompt);
+            try {
+                int value = Integer.parseInt(scanner.nextLine().trim());
+                if (value &gt;= min &amp;&amp; value &lt;= max) return value;
+            } catch (NumberFormatException ignored) {}
+            System.out.printf(
+                &quot;  [ERROR] Please enter an integer between %d and %d.%n&quot;, min, max);
+        }
+    }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Part B1 Files -->
+            <div id="code-part-b1" class="code-sub-content">
+                <div class="file-picker glass-panel">
+                    <button class="file-btn active" data-file-target="file-huffman-node">HuffmanNode.java</button>
+                    <button class="file-btn" data-file-target="file-huffman-min-heap">MinHeap.java</button>
+                    <button class="file-btn" data-file-target="file-huffman-tree">HuffmanTree.java</button>
+                    <button class="file-btn" data-file-target="file-huffman-app">HuffmanApp.java</button>
+                </div>
+                <div class="code-viewer-container glass-panel">
+                    <div id="file-huffman-node" class="file-content active">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario01_Huffman/HuffmanNode.java</span>
+                            <button class="copy-btn" data-target="code-file-huffman-node">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-huffman-node">package huffman;
+
+/**
+ * This class represents a single node inside the Huffman binary tree.
+ * 
+ * There are two kinds of nodes:
+ *   - Leaf nodes: hold an actual character (like &#x27;a&#x27; or &#x27;b&#x27;) and its frequency.
+ *   - Internal nodes: created by merging two smaller nodes together. They hold
+ *     the combined frequency but no real character (symbol is set to &#x27;\0&#x27;).
+ * 
+ * When traversing the tree to find a code, going left adds a &#x27;0&#x27; bit
+ * and going right adds a &#x27;1&#x27; bit.
+ */
+public class HuffmanNode {
+
+    /** The character this node represents. Only meaningful for leaf nodes. */
+    final char symbol;
+
+    /** Frequency of this character, or the sum of both children if this is an internal node. */
+    final int frequency;
+
+    /** Left child — going here adds a &#x27;0&#x27; to the code. */
+    HuffmanNode left;
+
+    /** Right child — going here adds a &#x27;1&#x27; to the code. */
+    HuffmanNode right;
+
+    /** Use this constructor to create a leaf node that holds a real character. */
+    HuffmanNode(char symbol, int frequency) {
+        this.symbol    = symbol;
+        this.frequency = frequency;
+        this.left      = null;
+        this.right     = null;
+    }
+
+    /** Use this constructor to create an internal node after merging two children. */
+    HuffmanNode(int frequency, HuffmanNode left, HuffmanNode right) {
+        this.symbol    = &#x27;\0&#x27;; // internal nodes don&#x27;t represent any character
+        this.frequency = frequency;
+        this.left      = left;
+        this.right     = right;
+    }
+
+    /** Returns true if this is a leaf node (no children = it holds a real character). */
+    boolean isLeafNodeWithNoChildren() {
+        return left == null &amp;&amp; right == null;
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-huffman-min-heap" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario01_Huffman/MinHeap.java</span>
+                            <button class="copy-btn" data-target="code-file-huffman-min-heap">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-huffman-min-heap">package huffman;
+
+/**
+ * This is a custom min-heap that stores HuffmanNode objects.
+ * I needed it for Huffman tree construction because the algorithm always
+ * needs to grab the two lowest-frequency nodes at each step.
+ * 
+ * The heap stores everything in a plain array. The node with the lowest
+ * frequency always sits at index 0 (the root), so extracting it is O(log n).
+ * 
+ * Array index relationships:
+ *   Parent of index i  →  (i - 1) / 2
+ *   Left child of i    →  2*i + 1
+ *   Right child of i   →  2*i + 2
+ * 
+ * When two nodes have the same frequency, I use two extra tiebreaker rules
+ * to make the tree shape consistent and predictable:
+ *   - Leaf nodes come before internal (merged) nodes
+ *   - Among leaves, alphabetical order (lower ASCII value first)
+ */
+public class MinHeap {
+
+    private HuffmanNode[] data;
+    private int            size;
+    private static final int INITIAL_CAPACITY = 16;
+
+    MinHeap() {
+        data = new HuffmanNode[INITIAL_CAPACITY];
+        size = 0;
+    }
+
+    /** Returns how many nodes are currently in the heap. */
+    int getCurrentHeapSize()       { return size; }
+
+    /** Returns true if the heap has nothing in it. */
+    boolean isHeapCurrentlyEmpty() { return size == 0; }
+
+    /**
+     * Adds a HuffmanNode to the heap and bubbles it up to the right position.
+     * Time: O(log n)
+     */
+    void insertNodeIntoMinHeap(HuffmanNode node) {
+        if (size == data.length) doubleHeapArrayCapacity();
+        data[size] = node;
+        siftNodeUpToRestoreHeapProperty(size);
+        size++;
+    }
+
+    /**
+     * Removes and returns the node with the lowest frequency (the root).
+     * The last element in the array is moved to the root and then sinks down.
+     * Returns null if the heap is empty.
+     * Time: O(log n)
+     */
+    HuffmanNode removeAndReturnMinimumFrequencyNode() {
+        if (size == 0) return null;
+        HuffmanNode top = data[0];
+        size--;
+        data[0] = data[size];
+        data[size] = null; // let GC reclaim memory
+        if (size &gt; 0) siftNodeDownToRestoreHeapProperty(0);
+        return top;
+    }
+
+    /**
+     * Returns the lowest-frequency node without removing it.
+     * Returns null if the heap is empty.
+     * Time: O(1)
+     */
+    HuffmanNode peekAtMinimumFrequencyNodeWithoutRemoving() {
+        return (size == 0) ? null : data[0];
+    }
+
+    // -- Private heap mechanics --
+
+    /**
+     * Bubbles the node at &#x27;index&#x27; upward until the heap rule is satisfied.
+     * Called after inserting a new node at the end of the array.
+     */
+    private void siftNodeUpToRestoreHeapProperty(int index) {
+        while (index &gt; 0) {
+            int parent = (index - 1) / 2;
+            if (compareNodesByFrequencyThenTypeAndSymbol(data[index], data[parent]) &lt; 0) {
+                swapTwoNodesInHeapArray(index, parent);
+                index = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    /**
+     * Sinks the node at &#x27;index&#x27; downward until the heap rule is satisfied.
+     * Called after removing the root and placing the last node there.
+     */
+    private void siftNodeDownToRestoreHeapProperty(int index) {
+        while (true) {
+            int left     = 2 * index + 1;
+            int right    = 2 * index + 2;
+            int smallest = index;
+
+            if (left  &lt; size &amp;&amp; compareNodesByFrequencyThenTypeAndSymbol(data[left],  data[smallest]) &lt; 0) smallest = left;
+            if (right &lt; size &amp;&amp; compareNodesByFrequencyThenTypeAndSymbol(data[right], data[smallest]) &lt; 0) smallest = right;
+
+            if (smallest == index) break;
+            swapTwoNodesInHeapArray(index, smallest);
+            index = smallest;
+        }
+    }
+
+    /**
+     * Compares two nodes. Returns a negative value if node &#x27;a&#x27; should
+     * be extracted before node &#x27;b&#x27; (i.e., &#x27;a&#x27; has lower priority in the min-heap).
+     * 
+     * Rule 1: lower frequency comes first (min-heap).
+     * Rule 2: if equal frequency, leaf nodes come before internal nodes.
+     * Rule 3: if both are leaves with equal frequency, alphabetical order.
+     */
+    private static int compareNodesByFrequencyThenTypeAndSymbol(HuffmanNode a, HuffmanNode b) {
+        if (a.frequency != b.frequency) {
+            return a.frequency - b.frequency;
+        }
+        // Tiebreaker 1: leaf beats internal node
+        boolean aLeaf = a.isLeafNodeWithNoChildren();
+        boolean bLeaf = b.isLeafNodeWithNoChildren();
+        if (aLeaf &amp;&amp; !bLeaf) return -1;
+        if (!aLeaf &amp;&amp; bLeaf) return  1;
+        // Tiebreaker 2: alphabetical among leaves
+        if (aLeaf &amp;&amp; bLeaf) return a.symbol - b.symbol;
+        return 0;
+    }
+
+    /** Swaps two nodes at positions i and j in the array. */
+    private void swapTwoNodesInHeapArray(int i, int j) {
+        HuffmanNode temp = data[i];
+        data[i] = data[j];
+        data[j] = temp;
+    }
+
+    /** Doubles the array size when the heap is full. */
+    private void doubleHeapArrayCapacity() {
+        HuffmanNode[] larger = new HuffmanNode[data.length * 2];
+        for (int i = 0; i &lt; data.length; i++) larger[i] = data[i];
+        data = larger;
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-huffman-tree" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario01_Huffman/HuffmanTree.java</span>
+                            <button class="copy-btn" data-target="code-file-huffman-tree">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-huffman-tree">package huffman;
+
+/**
+ * This class builds the Huffman tree and handles both encoding and decoding.
+ * 
+ * How the tree is built (Huffman&#x27;s greedy algorithm):
+ *   1. Start by putting each character into the min-heap as a leaf node.
+ *   2. Repeatedly pull out the two lowest-frequency nodes, merge them into
+ *      a new internal node whose frequency is the sum of both, and put it back.
+ *   3. Keep going until only one node is left — that is the root.
+ * 
+ * After building the tree, I do a pre-order traversal to assign codes.
+ * Going left adds &#x27;0&#x27; to the code string, going right adds &#x27;1&#x27;.
+ * 
+ * There&#x27;s a special case: if the input only has one unique character, the tree
+ * has no edges, so I wrap it in a synthetic root to give it the code &quot;0&quot;.
+ * 
+ * Time complexity:
+ *   Tree construction  : O(n log n) — n heap operations, each O(log n)
+ *   Encoding a message : O(m)       — one lookup per character
+ *   Decoding bits      : O(b)       — one tree step per bit
+ */
+public class HuffmanTree {
+
+    private HuffmanNode root;
+
+    // Two parallel arrays to map characters to their Huffman bit codes.
+    // I used parallel arrays instead of a map since we can&#x27;t use java.util.
+    private char[]   codeChars;
+    private String[] codes;
+    private int      codeCount;
+
+    /**
+     * Builds the Huffman tree from the given character and frequency arrays.
+     * The &#x27;count&#x27; tells us how many entries in the arrays are actually valid.
+     */
+    HuffmanTree(char[] characters, int[] frequencies, int count) {
+        codeChars  = new char[count + 1];   // +1 covers the single-character edge case
+        codes      = new String[count + 1];
+        codeCount  = 0;
+
+        if (count == 0) {
+            root = null;
+            return;
+        }
+
+        // Load every character as a leaf node into the min-heap.
+        MinHeap heap = new MinHeap();
+        for (int i = 0; i &lt; count; i++) {
+            heap.insertNodeIntoMinHeap(new HuffmanNode(characters[i], frequencies[i]));
+        }
+
+        // Edge case: only one unique character in the input.
+        // Wrap it in an internal root so the tree has at least one edge.
+        if (heap.getCurrentHeapSize() == 1) {
+            HuffmanNode only = heap.removeAndReturnMinimumFrequencyNode();
+            root = new HuffmanNode(only.frequency, only, null);
+        } else {
+            // Main greedy merge loop: always merge the two smallest nodes.
+            while (heap.getCurrentHeapSize() &gt; 1) {
+                HuffmanNode left  = heap.removeAndReturnMinimumFrequencyNode();
+                HuffmanNode right = heap.removeAndReturnMinimumFrequencyNode();
+                HuffmanNode merged = new HuffmanNode(
+                    left.frequency + right.frequency, left, right);
+                heap.insertNodeIntoMinHeap(merged);
+            }
+            root = heap.removeAndReturnMinimumFrequencyNode();
+        }
+
+        // Walk the tree to assign a bit string to each character.
+        generateHuffmanCodesViaPreOrderTraversal(root, &quot;&quot;);
+    }
+
+    /**
+     * Recursively walks the tree in pre-order.
+     * When we reach a leaf, the accumulated prefix string is that character&#x27;s code.
+     * Left child always gets &#x27;0&#x27; added, right child gets &#x27;1&#x27;.
+     */
+    private void generateHuffmanCodesViaPreOrderTraversal(HuffmanNode node, String prefix) {
+        if (node == null) return;
+        if (node.isLeafNodeWithNoChildren()) {
+            // Assign &quot;0&quot; if the prefix is empty (only happens in the single-char case).
+            codeChars[codeCount] = node.symbol;
+            codes[codeCount]     = prefix.isEmpty() ? &quot;0&quot; : prefix;
+            codeCount++;
+            return;
+        }
+        generateHuffmanCodesViaPreOrderTraversal(node.left,  prefix + &quot;0&quot;);
+        generateHuffmanCodesViaPreOrderTraversal(node.right, prefix + &quot;1&quot;);
+    }
+
+    /** Returns true if the tree was built successfully (root is not null). */
+    boolean isHuffmanTreeSuccessfullyBuilt() { return root != null; }
+
+    /**
+     * Converts a text message into a binary bit string using the Huffman codes.
+     * Returns null if any character in the message is not in the tree.
+     */
+    String encodeStringToBinaryBitSequence(String message) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i &lt; message.length(); i++) {
+            String code = lookUpHuffmanCodeForCharacter(message.charAt(i));
+            if (code == null) return null; // character not in this tree
+            sb.append(code);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Converts a binary bit string back to the original text by walking the tree.
+     * &#x27;0&#x27; means go left, &#x27;1&#x27; means go right. When we land on a leaf, that is
+     * the next character. Then we reset to the root and continue.
+     * Returns null if the bit string does not match any valid sequence in the tree.
+     */
+    String decodeBinaryBitSequenceToString(String encodedBits) {
+        if (root == null) return &quot;&quot;;
+
+        // Handle the special single-character tree (root has only a left child).
+        if (root.left != null &amp;&amp; root.left.isLeafNodeWithNoChildren() &amp;&amp; root.right == null) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i &lt; encodedBits.length(); i++) {
+                if (encodedBits.charAt(i) == &#x27;0&#x27;) {
+                    sb.append(root.left.symbol);
+                } else {
+                    return null; // only &#x27;0&#x27; is valid for a single-char tree
+                }
+            }
+            return sb.toString();
+        }
+
+        // Normal decoding: step through the tree one bit at a time.
+        StringBuilder result  = new StringBuilder();
+        HuffmanNode   current = root;
+        for (int i = 0; i &lt; encodedBits.length(); i++) {
+            char bit = encodedBits.charAt(i);
+            if      (bit == &#x27;0&#x27;) current = current.left;
+            else if (bit == &#x27;1&#x27;) current = current.right;
+            else return null; // invalid character in bit string
+
+            if (current == null) return null; // path doesn&#x27;t exist in the tree
+
+            if (current.isLeafNodeWithNoChildren()) {
+                result.append(current.symbol);
+                current = root; // reset to root for the next character
+            }
+        }
+        // If we stopped in the middle of a code, the bit string is incomplete.
+        if (current != root) return null;
+        return result.toString();
+    }
+
+    /** Prints the complete character-to-code table to the console. */
+    void printHuffmanCodeLookupTable() {
+        System.out.println(&quot;  Huffman Codes (Pre-order Traversal, left=&#x27;0&#x27;, right=&#x27;1&#x27;):&quot;);
+        printHorizontalDividerLine();
+        System.out.printf(&quot;  %-14s %s%n&quot;, &quot;Character&quot;, &quot;Code&quot;);
+        printHorizontalDividerLine();
+        for (int i = 0; i &lt; codeCount; i++) {
+            String label = (codeChars[i] == &#x27; &#x27;) ? &quot;SPACE&quot; : String.valueOf(codeChars[i]);
+            System.out.printf(&quot;  %-14s %s%n&quot;, &quot;&#x27;&quot; + label + &quot;&#x27;&quot;, codes[i]);
+        }
+        printHorizontalDividerLine();
+    }
+
+    /**
+     * Searches through the code table to find the bit string for a given character.
+     * Returns null if the character is not in the table.
+     * Using a linear search here is fine since the number of unique characters is small.
+     */
+    private String lookUpHuffmanCodeForCharacter(char c) {
+        for (int i = 0; i &lt; codeCount; i++) {
+            if (codeChars[i] == c) return codes[i];
+        }
+        return null;
+    }
+
+    private static void printHorizontalDividerLine() {
+        System.out.println(&quot;  ─────────────────────────────────────────────────────────────────────&quot;);
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-huffman-app" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario01_Huffman/HuffmanApp.java</span>
+                            <button class="copy-btn" data-target="code-file-huffman-app">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-huffman-app">package huffman;
+
+import java.util.Scanner;
+
+/**
+ * This is the starting point of the Huffman compression program.
+ * It handles the menu, reads user input, and calls the right methods
+ * on the HuffmanTree class.
+ * 
+ * I kept no algorithm logic here — all the tree building, encoding,
+ * and decoding happens inside HuffmanTree.java.
+ * 
+ * The only Java import I used in the whole huffman package is
+ * java.util.Scanner right here. The MinHeap and HuffmanTree are
+ * built completely from scratch.
+ */
+public class HuffmanApp {
+
+    // Store the current tree and the input text so they are
+    // accessible across all menu options without passing them around.
+    private static HuffmanTree currentTree  = null;
+    private static String      currentInput = null;
+
+    public static void main(String[] args) {
+
+        Scanner scanner = new Scanner(System.in);
+        printApplicationWelcomeBanner();
+
+        while (true) {
+            printMainMenuWithActiveTreeStatus();
+            String choice = scanner.nextLine().trim().toUpperCase();
+
+            switch (choice) {
+                case &quot;A&quot;: buildHuffmanTreeFromUserInput(scanner);       break;
+                case &quot;B&quot;: encodeTextMessageUsingCurrentTree(scanner);   break;
+                case &quot;C&quot;: decodeBitStringUsingCurrentTree(scanner);     break;
+                case &quot;D&quot;: displayCurrentHuffmanCodeTable();             break;
+                case &quot;E&quot;:
+                case &quot;EXIT&quot;:
+                    printHorizontalDividerLine();
+                    System.out.println(&quot;  Huffman Encoder stopped.&quot;);
+                    printHorizontalDividerLine();
+                    scanner.close();
+                    return;
+                default:
+                    System.out.println(&quot;  [ERROR] Invalid option. Please choose A, B, C, D, or E.&quot;);
+            }
+        }
+    }
+
+    // -- Option A: Build a new tree from whatever text the user types --
+
+    private static void buildHuffmanTreeFromUserInput(Scanner scanner) {
+        printHorizontalDividerLine();
+        System.out.println(&quot;  --- BUILD HUFFMAN TREE ---&quot;);
+        System.out.print(&quot;  Enter a word or phrase: &quot;);
+        String input = scanner.nextLine().trim();
+
+        if (input.isEmpty()) {
+            System.out.println(&quot;  [ERROR] Input cannot be empty.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        currentInput = input;
+
+        // Count how many times each character (ASCII 0-127) appears.
+        int[] freqTable  = new int[128];
+        for (int i = 0; i &lt; input.length(); i++) {
+            int c = input.charAt(i);
+            if (c &lt; 128) freqTable[c]++;
+        }
+
+        // Build compact arrays containing only the characters that actually appear.
+        char[] uniqueChars = new char[128];
+        int[]  uniqueFreqs = new int[128];
+        int    uniqueCount = 0;
+
+        for (int c = 0; c &lt; 128; c++) {
+            if (freqTable[c] &gt; 0) {
+                uniqueChars[uniqueCount] = (char) c;
+                uniqueFreqs[uniqueCount] = freqTable[c];
+                uniqueCount++;
+            }
+        }
+
+        // Print the frequency table so the user can see what was counted.
+        System.out.println();
+        System.out.println(&quot;  Frequency Table for: \&quot;&quot; + input + &quot;\&quot;&quot;);
+        printHorizontalDividerLine();
+        System.out.printf(&quot;  %-14s %s%n&quot;, &quot;Character&quot;, &quot;Frequency&quot;);
+        printHorizontalDividerLine();
+        for (int i = 0; i &lt; uniqueCount; i++) {
+            String label = (uniqueChars[i] == &#x27; &#x27;) ? &quot;SPACE&quot; : String.valueOf(uniqueChars[i]);
+            System.out.printf(&quot;  %-14s %d%n&quot;, &quot;&#x27;&quot; + label + &quot;&#x27;&quot;, uniqueFreqs[i]);
+        }
+
+        // Trim the arrays down to exactly the right size before passing to HuffmanTree.
+        char[] trimChars = new char[uniqueCount];
+        int[]  trimFreqs = new int[uniqueCount];
+        for (int i = 0; i &lt; uniqueCount; i++) {
+            trimChars[i] = uniqueChars[i];
+            trimFreqs[i] = uniqueFreqs[i];
+        }
+
+        currentTree = new HuffmanTree(trimChars, trimFreqs, uniqueCount);
+
+        System.out.println();
+        System.out.println(&quot;  [SUCCESS] Huffman tree built successfully.&quot;);
+        System.out.println();
+        currentTree.printHuffmanCodeLookupTable();
+    }
+
+    // -- Option B: Encode a message using the tree that was built in option A --
+
+    private static void encodeTextMessageUsingCurrentTree(Scanner scanner) {
+        printHorizontalDividerLine();
+        if (currentTree == null) {
+            System.out.println(&quot;  [ERROR] No Huffman tree built yet. Use Option A first.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+        System.out.println(&quot;  --- ENCODE MESSAGE ---&quot;);
+        System.out.printf(&quot;  Active tree built from: \&quot;%s\&quot;%n%n&quot;, currentInput);
+        System.out.print(&quot;  Enter message to encode: &quot;);
+        String message = scanner.nextLine().trim();
+
+        if (message.isEmpty()) {
+            System.out.println(&quot;  [ERROR] Message cannot be empty.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        String encoded = currentTree.encodeStringToBinaryBitSequence(message);
+        if (encoded == null) {
+            // This happens if the message has a character not in the tree.
+            System.out.println(&quot;  [ERROR] Message contains characters absent from the current tree.&quot;);
+            System.out.println(&quot;          Rebuild the tree using a phrase that includes all required characters.&quot;);
+        } else {
+            System.out.println();
+            System.out.println(&quot;  Original  : &quot; + message);
+            System.out.println(&quot;  Encoded   : &quot; + encoded);
+            System.out.printf(&quot;  Size      : %d characters → %d bits%n&quot;,
+                message.length(), encoded.length());
+            System.out.printf(&quot;  (Naive 8-bit ASCII would need %d bits)%n&quot;,
+                message.length() * 8);
+        }
+        printHorizontalDividerLine();
+    }
+
+    // -- Option C: Decode a bit string back to text --
+
+    private static void decodeBitStringUsingCurrentTree(Scanner scanner) {
+        printHorizontalDividerLine();
+        if (currentTree == null) {
+            System.out.println(&quot;  [ERROR] No Huffman tree built yet. Use Option A first.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+        System.out.println(&quot;  --- DECODE BIT STRING ---&quot;);
+        System.out.printf(&quot;  Active tree built from: \&quot;%s\&quot;%n%n&quot;, currentInput);
+        System.out.print(&quot;  Enter encoded bit string (0s and 1s only): &quot;);
+        String bits = scanner.nextLine().trim();
+
+        if (bits.isEmpty()) {
+            System.out.println(&quot;  [ERROR] Bit string cannot be empty.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        String decoded = currentTree.decodeBinaryBitSequenceToString(bits);
+        if (decoded == null) {
+            System.out.println(&quot;  [ERROR] Invalid bit string for the current Huffman tree.&quot;);
+        } else {
+            System.out.println();
+            System.out.println(&quot;  Encoded : &quot; + bits);
+            System.out.println(&quot;  Decoded : &quot; + decoded);
+        }
+        printHorizontalDividerLine();
+    }
+
+    // -- Option D: Show the current character-to-code mapping --
+
+    private static void displayCurrentHuffmanCodeTable() {
+        printHorizontalDividerLine();
+        if (currentTree == null) {
+            System.out.println(&quot;  [ERROR] No Huffman tree built yet. Use Option A first.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+        System.out.println(&quot;  --- CURRENT HUFFMAN CODE TABLE ---&quot;);
+        System.out.printf(&quot;  Tree built from: \&quot;%s\&quot;%n%n&quot;, currentInput);
+        currentTree.printHuffmanCodeLookupTable();
+    }
+
+    // -- UI helpers --
+
+    private static void printApplicationWelcomeBanner() {
+        System.out.println();
+        System.out.println(&quot;  +--------------------------------------------------+&quot;);
+        System.out.println(&quot;  |       HUFFMAN LOSSLESS COMPRESSION ENGINE        |&quot;);
+        System.out.println(&quot;  |  Data Structure : Custom Binary Min-Heap         |&quot;);
+        System.out.println(&quot;  |  Code Order     : Pre-order  (left=0 , right=1)  |&quot;);
+        System.out.println(&quot;  |  Import used    : java.util.Scanner ONLY         |&quot;);
+        System.out.println(&quot;  +--------------------------------------------------+&quot;);
+        System.out.println();
+    }
+
+    private static void printMainMenuWithActiveTreeStatus() {
+        System.out.println();
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        String treeStatus = (currentTree != null)
+            ? (currentInput.length() &gt; 26
+               ? &quot;\&quot;&quot; + currentInput.substring(0, 23) + &quot;...\&quot;&quot;
+               : &quot;\&quot;&quot; + currentInput + &quot;\&quot;&quot;)
+            : &quot;None&quot;;
+        System.out.printf(&quot;  |  Active Tree : %-28s|%n&quot;, treeStatus);
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        System.out.println(&quot;  |  A -- Build Huffman Tree (from input text)  |&quot;);
+        System.out.println(&quot;  |  B -- Encode a Message                      |&quot;);
+        System.out.println(&quot;  |  C -- Decode a Bit String                   |&quot;);
+        System.out.println(&quot;  |  D -- Display Current Huffman Codes         |&quot;);
+        System.out.println(&quot;  |  E -- Exit                                  |&quot;);
+        System.out.println(&quot;  +---------------------------------------------+&quot;);
+        System.out.print(&quot;  Choice: &quot;);
+    }
+
+    static void printHorizontalDividerLine() {
+        System.out.println(&quot;  ─────────────────────────────────────────────────────────────────────&quot;);
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Part B2 Files -->
+            <div id="code-part-b2" class="code-sub-content">
+                <div class="file-picker glass-panel">
+                    <button class="file-btn active" data-file-target="file-logistics-edge-node">EdgeNode.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-shipping-lane">ShippingLane.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-dijkstra-result">DijkstraResult.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-dijkstra-min-heap">DijkstraMinHeap.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-dijkstra-engine">DijkstraEngine.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-shipping-graph">ShippingGraph.java</button>
+                    <button class="file-btn" data-file-target="file-logistics-app">LogisticsApp.java</button>
+                </div>
+                <div class="code-viewer-container glass-panel">
+                    <div id="file-logistics-edge-node" class="file-content active">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/EdgeNode.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-edge-node">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-edge-node">package logistics;
+
+/**
+ * A single node in the adjacency list for one port in the shipping graph.
+ * 
+ * Each port has a linked list of EdgeNodes — one node per outgoing lane.
+ * I stored the destination port&#x27;s index (toPortIdx) directly here so that
+ * Dijkstra doesn&#x27;t have to do a name lookup every time it checks an edge.
+ * That keeps the inner loop fast.
+ */
+class EdgeNode {
+
+    /** The shipping lane this edge represents (holds weight and blocked status). */
+    final ShippingLane lane;
+
+    /**
+     * The index of the destination port in ShippingGraph&#x27;s port array.
+     * Stored here to avoid O(V) name lookups during Dijkstra edge relaxation.
+     */
+    final int toPortIdx;
+
+    /** Points to the next edge in this port&#x27;s adjacency list. Null if this is the last one. */
+    EdgeNode next;
+
+    EdgeNode(ShippingLane lane, int toPortIdx) {
+        this.lane      = lane;
+        this.toPortIdx = toPortIdx;
+        this.next      = null;
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-shipping-lane" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/ShippingLane.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-shipping-lane">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-shipping-lane">package logistics;
+
+/**
+ * Represents one directed shipping lane (edge) in the network.
+ * 
+ * Each lane has a baseWeight that is set when it is created and never changes.
+ * The currentWeight starts equal to the baseWeight but gets adjusted after
+ * every journey leg to simulate network congestion and recovery.
+ * 
+ * The three rules I implemented:
+ *   Congestion : currentWeight *= 1.10  (used lanes get 10% heavier)
+ *   Recovery   : currentWeight *= 0.95  (unused lanes recover by 5%, but not below base)
+ *   Blocking   : if currentWeight exceeds 5x the base weight, the lane is
+ *                permanently blocked and removed from future path calculations
+ */
+public class ShippingLane {
+
+    static final double MAX_LATENCY_MULTIPLIER = 5.0; // block threshold
+    static final double CONGESTION_RATE        = 0.10; // +10% when used
+    static final double RECOVERY_RATE          = 0.05; // -5% when not used
+
+    /** Name of the source port. */
+    final String fromPort;
+
+    /** Name of the destination port. */
+    final String toPort;
+
+    /** The original weight — never changes, acts as the recovery floor. */
+    final double baseWeight;
+
+    /** The current working weight used in Dijkstra. Changes after each journey leg. */
+    double currentWeight;
+
+    /** Once this is true, the lane is completely ignored by Dijkstra. */
+    boolean isBlocked;
+
+    ShippingLane(String from, String to, double baseWeight) {
+        this.fromPort      = from;
+        this.toPort        = to;
+        this.baseWeight    = baseWeight;
+        this.currentWeight = baseWeight; // start at the base
+        this.isBlocked     = false;
+    }
+
+    /**
+     * Applies the +10% congestion increase to this lane&#x27;s current weight.
+     * After increasing, checks if the blocking threshold has been crossed.
+     * Does nothing if the lane is already blocked.
+     */
+    void applyCongestionWeightIncrease() {
+        if (isBlocked) return;
+        currentWeight *= (1.0 + CONGESTION_RATE);
+        checkThresholdAndPermanentlyBlockLaneIfExceeded();
+    }
+
+    /**
+     * Applies the -5% recovery decrease to this lane&#x27;s current weight.
+     * The weight is clamped so it never drops below the original baseWeight.
+     * Does nothing if the lane is already blocked.
+     */
+    void applyRecoveryWeightDecrease() {
+        if (isBlocked) return;
+        currentWeight *= (1.0 - RECOVERY_RATE);
+        if (currentWeight &lt; baseWeight) currentWeight = baseWeight; // floor at base
+    }
+
+    /**
+     * Checks if the current weight has exceeded 5 times the base weight.
+     * If so, the lane is permanently blocked — no further updates will affect it.
+     */
+    private void checkThresholdAndPermanentlyBlockLaneIfExceeded() {
+        if (currentWeight &gt; baseWeight * MAX_LATENCY_MULTIPLIER) {
+            isBlocked = true;
+        }
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-dijkstra-result" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/DijkstraResult.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-dijkstra-result">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-dijkstra-result">package logistics;
+
+/**
+ * A simple container to return the result of one Dijkstra run.
+ * 
+ * It holds three things the caller needs after computeShortestPathUsingDijkstra():
+ *   - path      : the sequence of port indices from source to destination
+ *   - totalCost : the total weight of the chosen path
+ *   - usedLanes : a boolean array where usedLanes[i] is true if lane i was
+ *                 part of the path (used to decide which lanes get congestion penalty)
+ */
+class DijkstraResult {
+
+    final int[]     path;
+    final double    totalCost;
+    final boolean[] usedLanes;
+
+    DijkstraResult(int[] path, double totalCost, boolean[] usedLanes) {
+        this.path      = path;
+        this.totalCost = totalCost;
+        this.usedLanes = usedLanes;
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-dijkstra-min-heap" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/DijkstraMinHeap.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-dijkstra-min-heap">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-dijkstra-min-heap">package logistics;
+
+/**
+ * Custom min-heap used specifically for Dijkstra&#x27;s algorithm.
+ * Instead of creating wrapper objects, I used two parallel arrays —
+ * one for distances and one for port indices — to keep memory usage low.
+ * 
+ * The smallest distance always sits at index 0, so extracting it is O(log n).
+ * 
+ * Lazy deletion: if a port is already visited when it comes out of the heap,
+ * DijkstraEngine just skips it. This means we don&#x27;t need a decrease-key
+ * operation, which makes the code much simpler.
+ */
+class DijkstraMinHeap {
+
+    private double[] distances;
+    private int[]    portIndices;
+    private int      size;
+    private static final int INITIAL_CAPACITY = 32;
+
+    DijkstraMinHeap() {
+        distances   = new double[INITIAL_CAPACITY];
+        portIndices = new int[INITIAL_CAPACITY];
+        size        = 0;
+    }
+
+    /** Returns true if the heap has no entries. */
+    boolean isDijkstraHeapCurrentlyEmpty() { return size == 0; }
+
+    /**
+     * Adds a (distance, portIndex) pair to the heap and bubbles it up.
+     * Time: O(log n)
+     */
+    void insertDistanceEntryIntoHeap(double dist, int portIdx) {
+        if (size == distances.length) doubleHeapArraysCapacity();
+        distances[size]   = dist;
+        portIndices[size] = portIdx;
+        siftEntryUpToRestoreMinHeapOrder(size);
+        size++;
+    }
+
+    /**
+     * Removes and returns the entry with the smallest distance.
+     * Returns null if the heap is empty.
+     * Time: O(log n)
+     */
+    DijkstraEntry removeAndReturnSmallestDistanceEntry() {
+        if (size == 0) return null;
+        double d = distances[0];
+        int    i = portIndices[0];
+        size--;
+        distances[0]   = distances[size];
+        portIndices[0] = portIndices[size];
+        if (size &gt; 0) siftEntryDownToRestoreMinHeapOrder(0);
+        return new DijkstraEntry(d, i);
+    }
+
+    /**
+     * Bubbles the entry at index k upward until the min-heap rule is satisfied.
+     * Used after inserting a new entry at the end.
+     */
+    private void siftEntryUpToRestoreMinHeapOrder(int k) {
+        while (k &gt; 0) {
+            int parent = (k - 1) / 2;
+            if (distances[k] &lt; distances[parent]) {
+                swapTwoHeapEntriesAtGivenIndices(k, parent);
+                k = parent;
+            } else break;
+        }
+    }
+
+    /**
+     * Sinks the entry at index k downward until the min-heap rule is satisfied.
+     * Used after removing the root entry.
+     */
+    private void siftEntryDownToRestoreMinHeapOrder(int k) {
+        while (true) {
+            int left = 2 * k + 1, right = 2 * k + 2, smallest = k;
+            if (left  &lt; size &amp;&amp; distances[left]  &lt; distances[smallest]) smallest = left;
+            if (right &lt; size &amp;&amp; distances[right] &lt; distances[smallest]) smallest = right;
+            if (smallest == k) break;
+            swapTwoHeapEntriesAtGivenIndices(k, smallest);
+            k = smallest;
+        }
+    }
+
+    /** Swaps the distance and portIndex values at positions i and j. */
+    private void swapTwoHeapEntriesAtGivenIndices(int i, int j) {
+        double td = distances[i];   distances[i]   = distances[j];   distances[j]   = td;
+        int    ti = portIndices[i]; portIndices[i] = portIndices[j]; portIndices[j] = ti;
+    }
+
+    /** Doubles the capacity of both arrays when the heap fills up. */
+    private void doubleHeapArraysCapacity() {
+        double[] nd = new double[distances.length * 2];
+        int[]    ni = new int[portIndices.length * 2];
+        for (int i = 0; i &lt; distances.length; i++) { nd[i] = distances[i]; ni[i] = portIndices[i]; }
+        distances = nd; portIndices = ni;
+    }
+}
+
+/**
+ * Simple holder class that bundles a distance and a port index together.
+ * Used as the return type when extracting from DijkstraMinHeap.
+ */
+class DijkstraEntry {
+    final double distance;
+    final int    portIdx;
+    DijkstraEntry(double distance, int portIdx) {
+        this.distance = distance;
+        this.portIdx  = portIdx;
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-dijkstra-engine" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/DijkstraEngine.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-dijkstra-engine">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-dijkstra-engine">package logistics;
+
+/**
+ * This class runs Dijkstra&#x27;s shortest path algorithm on the shipping network.
+ * 
+ * I used a custom min-heap (DijkstraMinHeap) to always pick the port with
+ * the smallest known distance next. This gives O(log V) extraction instead
+ * of the O(V) scan you would need with a plain array.
+ * 
+ * I also used &quot;lazy deletion&quot; — when a port is settled (visited), I just
+ * skip it if it comes up again in the heap instead of removing it.
+ * This avoids needing a decrease-key operation.
+ * 
+ * The algorithm stops early as soon as the destination port is settled,
+ * so it doesn&#x27;t explore the whole graph unnecessarily.
+ * 
+ * Overall time: O((V + E) log V)
+ *   V extractions from the heap: each O(log V)
+ *   E edge relaxations total: each O(log V) for the heap insert
+ * 
+ * One important requirement: all edge weights must be non-negative.
+ * This is guaranteed here because base weights are always positive and
+ * the congestion/recovery rules never bring a weight below the base.
+ */
+public class DijkstraEngine {
+
+    private final ShippingGraph graph;
+
+    DijkstraEngine(ShippingGraph graph) {
+        this.graph = graph;
+    }
+
+    /**
+     * Finds the shortest path from sourceIdx to destIdx in the current graph state.
+     * 
+     * Returns a DijkstraResult containing:
+     *   - the sequence of port indices from source to destination
+     *   - the total cost of that path
+     *   - which lanes were used (so the caller can apply weight updates)
+     * 
+     * Returns null if the destination is unreachable (all paths are blocked).
+     */
+    DijkstraResult computeShortestPathUsingDijkstra(int sourceIdx, int destIdx) {
+
+        int n = graph.getTotalRegisteredPortCount();
+        if (n == 0) return null;
+
+        double[]      dist    = new double[n];
+        int[]         prev    = new int[n];
+        boolean[]     visited = new boolean[n];
+        ShippingLane[] laneTo = new ShippingLane[n]; // tracks which lane was used to reach each port
+
+        // Initialise all distances to infinity except the source.
+        for (int i = 0; i &lt; n; i++) {
+            dist[i] = Double.MAX_VALUE;
+            prev[i] = -1;
+        }
+        dist[sourceIdx] = 0.0;
+
+        DijkstraMinHeap pq = new DijkstraMinHeap();
+        pq.insertDistanceEntryIntoHeap(0.0, sourceIdx);
+
+        // Main loop: keep pulling out the closest unvisited port.
+        while (!pq.isDijkstraHeapCurrentlyEmpty()) {
+            DijkstraEntry top = pq.removeAndReturnSmallestDistanceEntry();
+            int u = top.portIdx;
+
+            if (visited[u]) continue; // lazy deletion: skip stale entries
+            visited[u] = true;
+
+            if (u == destIdx) break; // we&#x27;ve found the shortest path to the destination
+
+            // Try to relax all edges leaving port u.
+            EdgeNode node = graph.getAdjacencyListHeadForPort(u);
+            while (node != null) {
+                ShippingLane lane = node.lane;
+                if (!lane.isBlocked) {
+                    int    v       = node.toPortIdx;
+                    double newDist = dist[u] + lane.currentWeight;
+                    if (newDist &lt; dist[v]) {
+                        dist[v]   = newDist;
+                        prev[v]   = u;
+                        laneTo[v] = lane;
+                        pq.insertDistanceEntryIntoHeap(newDist, v);
+                    }
+                }
+                node = node.next;
+            }
+        }
+
+        // If the destination still has infinity distance, it was unreachable.
+        if (dist[destIdx] == Double.MAX_VALUE) return null;
+
+        // Reconstruct the path by backtracking through the prev[] array.
+        int pathLen = 0;
+        for (int cur = destIdx; cur != -1; cur = prev[cur]) pathLen++;
+
+        int[] path = new int[pathLen];
+        int   pos  = pathLen - 1;
+        for (int cur = destIdx; cur != -1; cur = prev[cur]) {
+            path[pos--] = cur;
+        }
+
+        // Build an array marking which lanes were actually used in this path.
+        int       totalLanes = graph.getTotalShippingLaneCount();
+        boolean[] usedLanes  = new boolean[totalLanes];
+
+        for (int i = 1; i &lt; path.length; i++) {
+            ShippingLane lane = laneTo[path[i]];
+            if (lane != null) {
+                int idx = graph.findIndexOfShippingLaneInArray(lane);
+                if (idx != -1) usedLanes[idx] = true;
+            }
+        }
+
+        return new DijkstraResult(path, dist[destIdx], usedLanes);
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-shipping-graph" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/ShippingGraph.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-shipping-graph">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-shipping-graph">package logistics;
+
+/**
+ * This is the directed weighted graph that models the shipping network.
+ * 
+ * Each port is a vertex and each shipping lane is a directed edge.
+ * I chose an adjacency list over an adjacency matrix because shipping
+ * networks are sparse — each port only connects to a few others, not all of them.
+ * This saves memory: O(V + E) instead of O(V²).
+ * 
+ * The edges are stored as singly-linked lists (using EdgeNode) with one list
+ * per port. New edges are prepended at the head in O(1).
+ * 
+ * I also keep a flat allLanes[] array alongside the adjacency list so that
+ * the adaptive weight update can iterate through all lanes efficiently
+ * without traversing the whole graph structure.
+ * 
+ * Limits: up to 100 ports and 500 lanes (expandable by changing the constants).
+ */
+public class ShippingGraph {
+
+    private static final int MAX_PORTS = 100;
+    private static final int MAX_LANES = 500;
+
+    private String[]     portNames;  // portNames[i] = the name of port i
+    private int          portCount;
+
+    /**
+     * The adjacency list. adjacency[i] is the head of the linked list of
+     * outgoing edges from port i.
+     */
+    private EdgeNode[]   adjacency;
+
+    /** Flat array of all lanes for global weight updates and audits. */
+    private ShippingLane[] allLanes;
+    private int            laneCount;
+
+    ShippingGraph() {
+        portNames  = new String[MAX_PORTS];
+        adjacency  = new EdgeNode[MAX_PORTS];
+        portCount  = 0;
+        allLanes   = new ShippingLane[MAX_LANES];
+        laneCount  = 0;
+    }
+
+    // -- Port operations --
+
+    /**
+     * Adds a new port to the graph as a vertex.
+     * If the port already exists, just returns its existing index.
+     * Returns -1 if the port limit has been reached.
+     */
+    int registerNewPortIntoGraph(String name) {
+        int existing = findPortIndexByName(name);
+        if (existing != -1) return existing;
+        if (portCount &gt;= MAX_PORTS) return -1;
+        portNames[portCount] = name;
+        adjacency[portCount] = null;
+        return portCount++;
+    }
+
+    /**
+     * Searches for a port by name and returns its index.
+     * The search is case-insensitive.
+     * Returns -1 if no port with that name is found.
+     */
+    int findPortIndexByName(String name) {
+        for (int i = 0; i &lt; portCount; i++) {
+            if (portNames[i].equalsIgnoreCase(name)) return i;
+        }
+        return -1;
+    }
+
+    /** Returns the name of the port at the given index, or null if out of range. */
+    String getPortNameByIndex(int idx) {
+        return (idx &gt;= 0 &amp;&amp; idx &lt; portCount) ? portNames[idx] : null;
+    }
+
+    /** Returns how many ports are currently registered. */
+    int getTotalRegisteredPortCount() { return portCount; }
+
+    // -- Lane (edge) operations --
+
+    /**
+     * Adds a directed shipping lane from one port to another with the given base weight.
+     * If either port doesn&#x27;t exist yet, it gets registered automatically.
+     * Returns false if the input is invalid or the lane limit is reached.
+     */
+    boolean addDirectedShippingLaneBetweenPorts(String from, String to, double weight) {
+        if (weight &lt;= 0)                        return false;
+        if (from.equalsIgnoreCase(to))          return false;
+        if (laneCount &gt;= MAX_LANES)             return false;
+
+        int fromIdx = registerNewPortIntoGraph(from);
+        int toIdx   = registerNewPortIntoGraph(to);
+        if (fromIdx == -1 || toIdx == -1)       return false;
+
+        ShippingLane lane    = new ShippingLane(from, to, weight);
+        EdgeNode     newNode = new EdgeNode(lane, toIdx);
+
+        // Prepend to the adjacency list — O(1) head insertion.
+        newNode.next       = adjacency[fromIdx];
+        adjacency[fromIdx] = newNode;
+
+        allLanes[laneCount++] = lane;
+        return true;
+    }
+
+    /** Returns the head of the adjacency list for the given port index. */
+    EdgeNode getAdjacencyListHeadForPort(int portIdx) {
+        return (portIdx &gt;= 0 &amp;&amp; portIdx &lt; portCount) ? adjacency[portIdx] : null;
+    }
+
+    // -- Adaptive weight update (called after each Dijkstra leg) --
+
+    /**
+     * Goes through every lane in the network and applies the weight update rules:
+     *   - Lanes that were used in the last journey leg get +10% congestion.
+     *   - Lanes that were NOT used get -5% recovery (but never below baseWeight).
+     * 
+     * The usedFlags array is parallel to allLanes[]: usedFlags[i] is true if
+     * lane i was part of the computed path.
+     */
+    void applyCongestionAndRecoveryWeightUpdates(boolean[] usedFlags) {
+        int limit = Math.min(laneCount, usedFlags.length);
+        for (int i = 0; i &lt; limit; i++) {
+            if (allLanes[i].isBlocked) continue;
+            if (usedFlags[i]) {
+                allLanes[i].applyCongestionWeightIncrease();
+            } else {
+                allLanes[i].applyRecoveryWeightDecrease();
+            }
+        }
+    }
+
+    // -- Accessors for DijkstraEngine --
+
+    /** Returns the total number of shipping lanes currently in the graph. */
+    int getTotalShippingLaneCount()      { return laneCount; }
+
+    /** Returns a copy of the allLanes array (does not expose the internal array). */
+    ShippingLane[] getAllShippingLanesCopy() {
+        ShippingLane[] copy = new ShippingLane[laneCount];
+        for (int i = 0; i &lt; laneCount; i++) copy[i] = allLanes[i];
+        return copy;
+    }
+
+    /**
+     * Finds the index of a specific lane object in allLanes[].
+     * Uses reference equality (==) to match the exact object.
+     * Returns -1 if not found.
+     */
+    int findIndexOfShippingLaneInArray(ShippingLane lane) {
+        for (int i = 0; i &lt; laneCount; i++) {
+            if (allLanes[i] == lane) return i;
+        }
+        return -1;
+    }
+
+    // -- Display --
+
+    /** Prints a live table of all shipping lanes showing their current weights and status. */
+    void displayLiveNetworkAuditOfAllLanes() {
+        System.out.println();
+        System.out.println(&quot;  ╔══════════════════ LIVE NETWORK AUDIT ══════════════════╗&quot;);
+        System.out.printf(&quot;  ║  %-14s %-14s %8s %12s %10s ║%n&quot;,
+            &quot;From&quot;, &quot;To&quot;, &quot;Base&quot;, &quot;Current&quot;, &quot;Status&quot;);
+        System.out.println(&quot;  ╠════════════════════════════════════════════════════════╣&quot;);
+        int blockedCount = 0;
+        for (int i = 0; i &lt; laneCount; i++) {
+            ShippingLane s = allLanes[i];
+            String status  = s.isBlocked ? &quot;BLOCKED&quot; : &quot;active&quot;;
+            String current = s.isBlocked ? &quot;N/A&quot; : String.format(&quot;%.2f&quot;, s.currentWeight);
+            System.out.printf(&quot;  ║  %-14s %-14s %8.2f %12s %10s ║%n&quot;,
+                s.fromPort, s.toPort, s.baseWeight, current, status);
+            if (s.isBlocked) blockedCount++;
+        }
+        System.out.println(&quot;  ╚════════════════════════════════════════════════════════╝&quot;);
+        System.out.printf(&quot;  Summary: %d total lanes | %d blocked | %d active%n%n&quot;,
+            laneCount, blockedCount, laneCount - blockedCount);
+    }
+}
+</code></pre>
+                        </div>
+                    </div>
+                    <div id="file-logistics-app" class="file-content">
+                        <div class="code-header">
+                            <span class="file-path">PartB_Scenario02_Logistics/LogisticsApp.java</span>
+                            <button class="copy-btn" data-target="code-file-logistics-app">📋 Copy Code</button>
+                        </div>
+                        <div class="code-wrapper">
+                            <pre><code id="code-file-logistics-app">package logistics;
+
+import java.util.Scanner;
+
+/**
+ * This is the main entry point for the Global Shipping Network application.
+ * It handles the menu, reads user input, and calls methods on ShippingGraph
+ * and DijkstraEngine.
+ * 
+ * I kept all graph and routing logic out of this class — this class only
+ * deals with the console UI. The only Java library import I used in the
+ * whole logistics package is java.util.Scanner right here.
+ * 
+ * Menu options:
+ *   A — Add a Port            (register a vertex)
+ *   B — Add a Shipping Lane   (add a directed weighted edge)
+ *   C — Plan Multi-Hub Journey (run Dijkstra leg by leg with weight updates)
+ *   D — Live Network Audit    (show all lanes and their current weights)
+ *   E — Display All Ports
+ *   F — Exit
+ */
+public class LogisticsApp {
+
+    private static final ShippingGraph  graph  = new ShippingGraph();
+    private static final DijkstraEngine engine = new DijkstraEngine(graph);
+
+    public static void main(String[] args) {
+
+        Scanner scanner = new Scanner(System.in);
+        printApplicationWelcomeBanner();
+
+        while (true) {
+            printMainMenuWithNetworkStatus();
+            String choice = scanner.nextLine().trim().toUpperCase();
+
+            switch (choice) {
+                case &quot;A&quot;: promptAndRegisterNewPort(scanner);              break;
+                case &quot;B&quot;: promptAndAddShippingLane(scanner);              break;
+                case &quot;C&quot;: promptAndPlanMultiHubDeliveryJourney(scanner);  break;
+                case &quot;D&quot;: graph.displayLiveNetworkAuditOfAllLanes();      break;
+                case &quot;E&quot;: displayAllRegisteredPorts();                    break;
+                case &quot;F&quot;:
+                case &quot;EXIT&quot;:
+                    printHorizontalDividerLine();
+                    System.out.println(&quot;  Logistics system stopped. All network state discarded.&quot;);
+                    printHorizontalDividerLine();
+                    scanner.close();
+                    return;
+                default:
+                    System.out.println(&quot;  [ERROR] Invalid option. Please choose A–F.&quot;);
+            }
+        }
+    }
+
+    // -- Option A: Register a new port --
+
+    private static void promptAndRegisterNewPort(Scanner scanner) {
+        printHorizontalDividerLine();
+        System.out.println(&quot;  --- ADD PORT ---&quot;);
+        String name = readNonEmptyStringFromConsole(scanner, &quot;Port Name: &quot;);
+
+        if (graph.findPortIndexByName(name) != -1) {
+            System.out.printf(&quot;  [INFO] Port &#x27;%s&#x27; is already registered.%n&quot;, name);
+        } else {
+            int idx = graph.registerNewPortIntoGraph(name);
+            if (idx == -1) {
+                System.out.println(&quot;  [ERROR] Maximum port limit (100) reached.&quot;);
+            } else {
+                System.out.printf(&quot;  [SUCCESS] Port &#x27;%s&#x27; registered (Index: %d).%n&quot;, name, idx);
+            }
+        }
+        printHorizontalDividerLine();
+    }
+
+    // -- Option B: Add a directed shipping lane --
+
+    private static void promptAndAddShippingLane(Scanner scanner) {
+        printHorizontalDividerLine();
+        System.out.println(&quot;  --- ADD SHIPPING LANE (Directed Edge) ---&quot;);
+        String from   = readNonEmptyStringFromConsole(scanner, &quot;From Port    : &quot;);
+        String to     = readNonEmptyStringFromConsole(scanner, &quot;To Port      : &quot;);
+        double weight = readPositiveDoubleValueFromConsole(scanner, &quot;Base Latency (cost &gt; 0): &quot;);
+
+        if (from.equalsIgnoreCase(to)) {
+            System.out.println(&quot;  [ERROR] Source and destination ports must be different.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        boolean added = graph.addDirectedShippingLaneBetweenPorts(from, to, weight);
+        if (!added) {
+            System.out.println(&quot;  [ERROR] Could not add lane (invalid data or capacity reached).&quot;);
+        } else {
+            System.out.printf(&quot;  [SUCCESS] Lane added: %s → %s (Base latency: %.2f)%n&quot;,
+                from, to, weight);
+        }
+        printHorizontalDividerLine();
+    }
+
+    // -- Option C: Plan and execute a multi-hub delivery journey --
+
+    /**
+     * Reads the source, destination, and any intermediate hubs from the user.
+     * Then runs Dijkstra for each leg of the journey one at a time.
+     * After each leg, the adaptive weight update is applied so later legs
+     * reflect the congestion caused by earlier ones.
+     * 
+     * If any leg is unreachable (all paths are blocked), the whole journey aborts.
+     */
+    private static void promptAndPlanMultiHubDeliveryJourney(Scanner scanner) {
+        printHorizontalDividerLine();
+        System.out.println(&quot;  --- PLAN MULTI-HUB DELIVERY JOURNEY ---&quot;);
+
+        if (graph.getTotalRegisteredPortCount() &lt; 2) {
+            System.out.println(&quot;  [ERROR] At least 2 ports required. Add ports and lanes first.&quot;);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        String source = readNonEmptyStringFromConsole(scanner, &quot;Source Port     : &quot;);
+        String dest   = readNonEmptyStringFromConsole(scanner, &quot;Destination Port: &quot;);
+
+        if (graph.findPortIndexByName(source) == -1) {
+            System.out.printf(&quot;  [ERROR] Source port &#x27;%s&#x27; not found in network.%n&quot;, source);
+            printHorizontalDividerLine();
+            return;
+        }
+        if (graph.findPortIndexByName(dest) == -1) {
+            System.out.printf(&quot;  [ERROR] Destination port &#x27;%s&#x27; not found in network.%n&quot;, dest);
+            printHorizontalDividerLine();
+            return;
+        }
+
+        // Read any intermediate hubs the user wants to route through.
+        int numHubs = readNonNegativeIntegerFromConsole(scanner, &quot;Number of mandatory intermediate hubs (0 = direct): &quot;);
+        String[] hubs = new String[numHubs];
+
+        for (int i = 0; i &lt; numHubs; i++) {
+            String hub = readNonEmptyStringFromConsole(scanner, &quot;Hub &quot; + (i + 1) + &quot; name: &quot;);
+            if (graph.findPortIndexByName(hub) == -1) {
+                System.out.printf(&quot;  [ERROR] Hub &#x27;%s&#x27; not found in network.%n&quot;, hub);
+                printHorizontalDividerLine();
+                return;
+            }
+            hubs[i] = hub;
+        }
+
+        // Build the full waypoint sequence: source → hub1 → hub2 → ... → dest
+        String[] waypoints = new String[numHubs + 2];
+        waypoints[0] = source;
+        for (int i = 0; i &lt; numHubs; i++) waypoints[i + 1] = hubs[i];
+        waypoints[numHubs + 1] = dest;
+
+        int totalLegs = numHubs + 1;
+
+        // Print the journey overview before starting.
+        System.out.println();
+        System.out.println(&quot;  Journey Plan:&quot;);
+        System.out.print(&quot;    &quot;);
+        for (int i = 0; i &lt; waypoints.length; i++) {
+            System.out.print(waypoints[i]);
+            if (i &lt; waypoints.length - 1) System.out.print(&quot; → &quot;);
+        }
+        System.out.println();
+        System.out.println();
+
+        double totalJourneyCost = 0.0;
+
+        // Execute each leg one at a time.
+        for (int leg = 0; leg &lt; totalLegs; leg++) {
+
+            String from    = waypoints[leg];
+            String to      = waypoints[leg + 1];
+            int    fromIdx = graph.findPortIndexByName(from);
+            int    toIdx   = graph.findPortIndexByName(to);
+
+            System.out.printf(&quot;  ┌─ LEG %d : %s → %s%n&quot;, leg + 1, from, to);
+
+            DijkstraResult result = engine.computeShortestPathUsingDijkstra(fromIdx, toIdx);
+
+            // If Dijkstra returns null, the destination is completely unreachable.
+            if (result == null) {
+                System.out.printf(&quot;  └─ [BLOCKED] &#x27;%s&#x27; is UNREACHABLE from &#x27;%s&#x27;.%n&quot;, to, from);
+                System.out.println(&quot;     Previous congestion has severed all paths.&quot;);
+                System.out.println(&quot;     Journey ABORTED.&quot;);
+                printHorizontalDividerLine();
+                return;
+            }
+
+            // Print the path found for this leg.
+            System.out.print(&quot;  │  Path    : &quot;);
+            for (int i = 0; i &lt; result.path.length; i++) {
+                System.out.print(graph.getPortNameByIndex(result.path[i]));
+                if (i &lt; result.path.length - 1) System.out.print(&quot; → &quot;);
+            }
+            System.out.println();
+            System.out.printf(&quot;  │  Leg Cost: %.2f%n&quot;, result.totalCost);
+            totalJourneyCost += result.totalCost;
+
+            // Apply congestion/recovery updates before moving to the next leg.
+            graph.applyCongestionAndRecoveryWeightUpdates(result.usedLanes);
+            System.out.println(&quot;  └─ [UPDATE] Congestion (+10%) and Recovery (−5%) applied.&quot;);
+            System.out.println();
+        }
+
+        // Print the total cost for the whole journey.
+        System.out.printf(&quot;  ★ Total Journey Cost: %.2f%n%n&quot;, totalJourneyCost);
+
+        // Show the updated network state after the full journey.
+        graph.displayLiveNetworkAuditOfAllLanes();
+        printHorizontalDividerLine();
+    }
+
+    // -- Option E: List all registered ports --
+
+    private static void displayAllRegisteredPorts() {
+        printHorizontalDividerLine();
+        System.out.println(&quot;  --- REGISTERED PORTS ---&quot;);
+        int count = graph.getTotalRegisteredPortCount();
+        if (count == 0) {
+            System.out.println(&quot;  No ports registered. Use Option A or B to add ports.&quot;);
+        } else {
+            for (int i = 0; i &lt; count; i++) {
+                System.out.printf(&quot;  [%3d] %s%n&quot;, i, graph.getPortNameByIndex(i));
+            }
+            System.out.printf(&quot;%n  Total: %d port(s) registered.%n&quot;, count);
+        }
+        printHorizontalDividerLine();
+    }
+
+    // -- Input helper methods --
+
+    /** Keeps asking until the user types something that is not blank. */
+    private static String readNonEmptyStringFromConsole(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(&quot;  &quot; + prompt);
+            String val = scanner.nextLine().trim();
+            if (!val.isEmpty()) return val;
+            System.out.println(&quot;  [ERROR] Input cannot be empty.&quot;);
+        }
+    }
+
+    /** Keeps asking until the user types a positive number greater than zero. */
+    private static double readPositiveDoubleValueFromConsole(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(&quot;  &quot; + prompt);
+            try {
+                double val = Double.parseDouble(scanner.nextLine().trim());
+                if (val &gt; 0) return val;
+            } catch (NumberFormatException ignored) {}
+            System.out.println(&quot;  [ERROR] Please enter a positive number greater than zero.&quot;);
+        }
+    }
+
+    /** Keeps asking until the user types a non-negative integer (0 or more). */
+    private static int readNonNegativeIntegerFromConsole(Scanner scanner, String prompt) {
+        while (true) {
+            System.out.print(&quot;  &quot; + prompt);
+            try {
+                int val = Integer.parseInt(scanner.nextLine().trim());
+                if (val &gt;= 0) return val;
+            } catch (NumberFormatException ignored) {}
+            System.out.println(&quot;  [ERROR] Please enter a non-negative integer.&quot;);
+        }
+    }
+
+    // -- UI helpers --
+
+    private static void printApplicationWelcomeBanner() {
+        System.out.println();
+        System.out.println(&quot;  +----------------------------------------------------------+&quot;);
+        System.out.println(&quot;  |    GLOBAL LOGISTICS SHIPPING NETWORK SYSTEM              |&quot;);
+        System.out.println(&quot;  |  Data Structure : Directed Weighted Graph (Adj. List)    |&quot;);
+        System.out.println(&quot;  |  Algorithm      : Heap-based Dijkstra  O((V+E) log V)    |&quot;);
+        System.out.println(&quot;  |  Adaptive       : Congestion +10% | Recovery -5%         |&quot;);
+        System.out.println(&quot;  |  Import used    : java.util.Scanner ONLY                 |&quot;);
+        System.out.println(&quot;  +----------------------------------------------------------+&quot;);
+        System.out.println();
+    }
+
+    private static void printMainMenuWithNetworkStatus() {
+        System.out.println();
+        System.out.println(&quot;  +-----------------------------------------------+&quot;);
+        System.out.printf (&quot;  |  Ports : %-36d|%n&quot;, graph.getTotalRegisteredPortCount());
+        System.out.printf (&quot;  |  Lanes : %-36d|%n&quot;, graph.getTotalShippingLaneCount());
+        System.out.println(&quot;  +-----------------------------------------------+&quot;);
+        System.out.println(&quot;  |  A -- Add a Port                              |&quot;);
+        System.out.println(&quot;  |  B -- Add a Shipping Lane (directed edge)     |&quot;);
+        System.out.println(&quot;  |  C -- Plan Multi-Hub Delivery Journey         |&quot;);
+        System.out.println(&quot;  |  D -- Live Network Audit (all lane weights)   |&quot;);
+        System.out.println(&quot;  |  E -- Display All Ports                       |&quot;);
+        System.out.println(&quot;  |  F -- Exit                                    |&quot;);
+        System.out.println(&quot;  +-----------------------------------------------+&quot;);
+        System.out.print(&quot;  Choice: &quot;);
+    }
+
+    static void printHorizontalDividerLine() {
+        System.out.println(&quot;  ─────────────────────────────────────────────────────────────────────&quot;);
+    }
+}
+</code></pre>
+                        </div>
                     </div>
                 </div>
             </div>

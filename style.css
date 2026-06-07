@@ -392,3 +392,179 @@ body {
         transform: translateY(0);
     }
 }
+
+/* Source Code Section Styles */
+.code-sub-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    border-radius: 12px;
+    margin-bottom: 2rem;
+}
+
+.code-sub-tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 0.6rem 1.2rem;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.code-sub-tab-btn:hover {
+    color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.code-sub-tab-btn.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 15px var(--accent-glow);
+}
+
+.code-sub-content {
+    display: none;
+    animation: fadeIn 0.4s ease forwards;
+}
+
+.code-sub-content.active {
+    display: block;
+}
+
+.file-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+}
+
+.file-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.file-btn:hover {
+    color: var(--text-main);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.file-btn.active {
+    background: rgba(29, 158, 117, 0.15);
+    border-color: var(--accent);
+    color: var(--text-main);
+    box-shadow: 0 0 8px rgba(29, 158, 117, 0.2);
+}
+
+.code-viewer-container {
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+}
+
+.file-content {
+    display: none;
+}
+
+.file-content.active {
+    display: block;
+    animation: fadeIn 0.3s ease forwards;
+}
+
+.code-header {
+    background: rgba(15, 23, 42, 0.9);
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--glass-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
+
+.file-path {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.copy-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--glass-border);
+    color: var(--text-main);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+}
+
+.copy-btn:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.copy-btn.copied {
+    background: #10b981;
+    border-color: #10b981;
+}
+
+.code-wrapper {
+    background: #0b0f19;
+    padding: 1.5rem;
+    max-height: 600px;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.code-wrapper pre {
+    margin: 0;
+}
+
+.code-wrapper code {
+    font-family: 'Fira Code', 'Courier New', Courier, monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: #cbd5e1;
+    display: block;
+    white-space: pre;
+}
+
+/* Custom scrollbars for code blocks */
+.code-wrapper::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.code-wrapper::-webkit-scrollbar-track {
+    background: #090d16;
+}
+.code-wrapper::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 4px;
+}
+.code-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+}
+

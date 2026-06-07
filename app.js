@@ -127,4 +127,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         updateTransform();
     });
+
+    // --- Code Viewer Tabs Logic ---
+    const codeSubTabBtns = document.querySelectorAll('.code-sub-tab-btn');
+    const codeSubContents = document.querySelectorAll('.code-sub-content');
+
+    codeSubTabBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            codeSubTabBtns.forEach(b => b.classList.remove('active'));
+            codeSubContents.forEach(c => c.classList.remove('active'));
+
+            btn.classList.add('active');
+            const target = document.getElementById(btn.dataset.codeTarget);
+            if (target) {
+                target.classList.add('active');
+            }
+        });
+    });
+
+    // --- File Picker Logic ---
+    const fileBtns = document.querySelectorAll('.file-btn');
+    fileBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const parentSection = btn.closest('.code-sub-content');
+            if (parentSection) {
+                const siblingFileBtns = parentSection.querySelectorAll('.file-btn');
+                const siblingFileContents = parentSection.querySelectorAll('.file-content');
+
+                siblingFileBtns.forEach(b => b.classList.remove('active'));
+                siblingFileContents.forEach(c => c.classList.remove('active'));
+
+                btn.classList.add('active');
+                const target = parentSection.querySelector('#' + btn.dataset.fileTarget);
+                if (target) {
+                    target.classList.add('active');
+                }
+            }
+        });
+    });
+
+    // --- Copy Code Logic ---
+    const copyBtns = document.querySelectorAll('.copy-btn');
+    copyBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const codeEl = document.getElementById(targetId);
+            if (codeEl) {
+                navigator.clipboard.writeText(codeEl.textContent)
+                    .then(() => {
+                        const originalText = btn.innerHTML;
+                        btn.innerHTML = '✅ Copied!';
+                        btn.classList.add('copied');
+                        setTimeout(() => {
+                            btn.innerHTML = originalText;
+                            btn.classList.remove('copied');
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Failed to copy code: ', err);
+                    });
+            }
+        });
+    });
 });
